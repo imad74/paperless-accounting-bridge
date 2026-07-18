@@ -1,0 +1,32 @@
+{
+  "name": "paperless-accounting-bridge",
+  "version": "1.0.0",
+  "description": "v0.1.0-alpha",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imad74/paperless-accounting-bridge.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/imad74/paperless-accounting-bridge/issues"
+  },
+  "homepage": "https://github.com/imad74/paperless-accounting-bridge#readme",
+  "dependencies": {
+    "@tabler/core": "^1.4.0",
+    "bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.13.1"
+  },
+  "devDependencies": {
+    "vite": "^8.1.5"
+  }
+}
