@@ -1,22 +1,46 @@
 {% load static %}
 <!doctype html>
 <html lang="fr">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>{% block title %}Paperless Accounting Bridge{% endblock %}</title>
 
-    <link rel="stylesheet"
-          href="{% static 'vendor/tabler/css/tabler.min.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/tabler/css/tabler.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/pab.css' %}">
 </head>
 
 <body>
 
-{% block body %}
-{% endblock %}
+<div class="page">
+
+    {% include "includes/sidebar.html" %}
+
+    <div class="page-wrapper">
+
+        {% include "includes/navbar.html" %}
+
+        <div class="page-body">
+            <div class="container-xl">
+
+                {% include "includes/messages.html" %}
+
+                {% block body %}
+                {% endblock %}
+
+            </div>
+        </div>
+
+        {% include "includes/footer.html" %}
+
+    </div>
+
+</div>
 
 <script src="{% static 'vendor/tabler/js/tabler.min.js' %}"></script>
+<script src="{% static 'js/pab.js' %}"></script>
 
 </body>
 </html>
