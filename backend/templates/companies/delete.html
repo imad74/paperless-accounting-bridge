@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+<div class="card">
+
+    <div class="card-body text-center">
+
+        <h3>Delete company</h3>
+
+        <p>
+
+            Are you sure you want to delete
+
+            <strong>{{ object.name }}</strong> ?
+
+        </p>
+
+        <form method="post">
+
+            {% csrf_token %}
+
+            <a href="{% url 'companies:list' %}" class="btn btn-secondary">
+
+                Cancel
+
+            </a>
+
+            <button class="btn btn-danger">
+
+                Delete
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if object %}
+Edit Company
+{% else %}
+New Company
+{% endif %}
+{% endblock %}
+
+{% block body %}
+
+<div class="page-header mb-4">
+
+    <h2 class="page-title">
+
+        {% if object %}
+            Edit Company
+        {% else %}
+            New Company
+        {% endif %}
+
+    </h2>
+
+</div>
+
+<div class="card">
+
+    <form method="post">
+
+        {% csrf_token %}
+
+        <div class="card-body">
+
+            <div class="row">
+
+                {% for field in form %}
+
+                <div class="col-md-6 mb-3">
+
+                    <label class="form-label">
+
+                        {{ field.label }}
+
+                    </label>
+
+                    {{ field }}
+
+                    {% if field.errors %}
+
+                        <div class="text-danger small">
+
+                            {{ field.errors }}
+
+                        </div>
+
+                    {% endif %}
+
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+        <div class="card-footer text-end">
+
+            <a href="{% url 'companies:list' %}" class="btn btn-secondary">
+
+                Cancel
+
+            </a>
+
+            <button class="btn btn-primary">
+
+                Save
+
+            </button>
+
+        </div>
+
+    </form>
+
+</div>
+
+{% endblock %}

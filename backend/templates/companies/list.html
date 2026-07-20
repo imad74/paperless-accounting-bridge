@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Companies{% endblock %}
+
+{% block body %}
+
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+
+        <div class="col">
+            <h2 class="page-title">
+                Companies
+            </h2>
+
+            <div class="text-secondary">
+                Manage your companies database
+            </div>
+        </div>
+
+        <div class="col-auto ms-auto">
+
+            <a href="{% url 'companies:create' %}" class="btn btn-primary">
+
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     class="icon"
+                     width="24"
+                     height="24"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2">
+
+                    <path d="M12 5v14"/>
+                    <path d="M5 12h14"/>
+
+                </svg>
+
+                New Company
+
+            </a>
+
+        </div>
+
+    </div>
+</div>
+
+
+<div class="card">
+
+    <div class="card-header">
+
+        <form method="get" class="w-100">
+
+            <div class="row">
+
+                <div class="col-md-5">
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        placeholder="Search..."
+                        name="q"
+                        value="{{ request.GET.q }}"
+                    >
+
+                </div>
+
+                <div class="col-auto">
+
+                    <button class="btn btn-outline-primary">
+
+                        Search
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </form>
+
+    </div>
+
+
+    <div class="table-responsive">
+
+        <table class="table table-vcenter table-hover card-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>Code</th>
+                    <th>Company</th>
+                    <th>City</th>
+                    <th>Contact</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th width="140">Actions</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+            {% for company in companies %}
+
+                <tr>
+
+                    <td>
+
+                        <strong>{{ company.code }}</strong>
+
+                    </td>
+
+                    <td>
+
+                        {{ company.name }}
+
+                    </td>
+
+                    <td>
+
+                        {{ company.city }}
+
+                    </td>
+
+                    <td>
+
+                        {{ company.contact }}
+
+                    </td>
+
+                    <td>
+
+                        {{ company.email }}
+
+                    </td>
+
+                    <td>
+
+                        {% if company.active %}
+
+                            <span class="badge bg-green">
+
+                                Active
+
+                            </span>
+
+                        {% else %}
+
+                            <span class="badge bg-red">
+
+                                Inactive
+
+                            </span>
+
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+
+                        <a
+                            href="{% url 'companies:update' company.pk %}"
+                            class="btn btn-sm btn-outline-primary">
+
+                            Edit
+
+                        </a>
+
+                        <a
+                            href="{% url 'companies:delete' company.pk %}"
+                            class="btn btn-sm btn-outline-danger">
+
+                            Delete
+
+                        </a>
+
+                    </td>
+
+                </tr>
+
+            {% empty %}
+
+                <tr>
+
+                    <td colspan="7" class="text-center py-5">
+
+                        <div class="text-secondary">
+
+                            No companies found.
+
+                        </div>
+
+                    </td>
+
+                </tr>
+
+            {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    {% if is_paginated %}
+
+    <div class="card-footer">
+
+        <ul class="pagination justify-content-end mb-0">
+
+            {% if page_obj.has_previous %}
+
+            <li class="page-item">
+
+                <a class="page-link"
+                   href="?page={{ page_obj.previous_page_number }}&q={{ request.GET.q }}">
+
+                    Previous
+
+                </a>
+
+            </li>
+
+            {% endif %}
+
+
+            <li class="page-item active">
+
+                <span class="page-link">
+
+                    {{ page_obj.number }}
+
+                </span>
+
+            </li>
+
+
+            {% if page_obj.has_next %}
+
+            <li class="page-item">
+
+                <a class="page-link"
+                   href="?page={{ page_obj.next_page_number }}&q={{ request.GET.q }}">
+
+                    Next
+
+                </a>
+
+            </li>
+
+            {% endif %}
+
+        </ul>
+
+    </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}
