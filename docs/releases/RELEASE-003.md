@@ -1,4 +1,4 @@
-# Release 003 — Gestion des accès, des sociétés et du référentiel documentaire
+# Release 003 — Gestion des accès, des sociétés et du référentiel documentaires
 
 ## 1. Statut
 
