@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Membres{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Membres</h2>
+            <div class="text-secondary">
+                Gérez les accès à {{ active_company.name }}.
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a href="{% url 'accounts:membership_create' %}" class="btn btn-primary">
+                Ajouter un membre
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-vcenter table-hover card-table">
+            <thead>
+                <tr>
+                    <th>Utilisateur</th>
+                    <th>Adresse e-mail</th>
+                    <th>Rôle</th>
+                    <th>Statut</th>
+                    <th class="w-1">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for membership in memberships %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">
+                                {{ membership.user.get_full_name|default:membership.user.get_username }}
+                            </div>
+                            <div class="text-secondary small">
+                                {{ membership.user.get_username }}
+                            </div>
+                        </td>
+                        <td>{{ membership.user.email|default:"—" }}</td>
+                        <td>
+                            <span class="badge bg-blue-lt">
+                                {{ membership.get_role_display }}
+                            </span>
+                            {% if membership.role == "ADMIN" and membership.active and active_admin_count == 1 %}
+                                <span class="badge bg-yellow-lt">
+                                    Dernier administrateur actif
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if membership.active %}
+                                <span class="badge bg-green">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Suspendue</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-list flex-nowrap">
+                                <a href="{% url 'accounts:membership_update' membership.pk %}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    Modifier
+                                </a>
+                                <a href="{% url 'accounts:membership_delete' membership.pk %}"
+                                   class="btn btn-sm btn-outline-danger">
+                                    Retirer
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-secondary py-5">
+                            Aucun membre trouvé.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">
+                Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+            </p>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+                            Précédente
+                        </a>
+                    </li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+                            Suivante
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

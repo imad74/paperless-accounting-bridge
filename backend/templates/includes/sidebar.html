@@ -8,20 +8,33 @@
         <div class="navbar-nav">
 
             <div class="nav-item">
-                <a class="nav-link active" href="/">
+                <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}"
+                   href="{% url 'home' %}">
                     <span class="nav-link-title">
-                        🏠 Dashboard
+                        🏠 Tableau de bord
                     </span>
                 </a>
             </div>
 
             <div class="nav-item">
-                <a class="nav-link" href="#">
+                <a class="nav-link {% if request.resolver_match.namespace == 'companies' %}active{% endif %}"
+                   href="{% url 'companies:list' %}">
                     <span class="nav-link-title">
-                        🏢 Companies
+                        🏢 Sociétés
                     </span>
                 </a>
             </div>
+
+            {% if active_company_membership.role == "ADMIN" %}
+            <div class="nav-item">
+                <a class="nav-link {% if request.resolver_match.namespace == 'accounts' and request.resolver_match.url_name != 'company_select' %}active{% endif %}"
+                   href="{% url 'accounts:membership_list' %}">
+                    <span class="nav-link-title">
+                        👥 Membres
+                    </span>
+                </a>
+            </div>
+            {% endif %}
 
             <div class="nav-item">
                 <a class="nav-link" href="#">
@@ -42,7 +55,7 @@
             <div class="nav-item">
                 <a class="nav-link" href="#">
                     <span class="nav-link-title">
-                        📊 Reports
+                        📊 Rapports
                     </span>
                 </a>
             </div>
@@ -50,7 +63,7 @@
             <div class="nav-item">
                 <a class="nav-link" href="#">
                     <span class="nav-link-title">
-                        ⚙️ Settings
+                        ⚙️ Paramètres
                     </span>
                 </a>
             </div>

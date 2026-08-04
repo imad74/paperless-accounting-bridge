@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Retirer un membre{% endblock %}
+
+{% block body %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body text-center">
+                <h2 class="card-title">Retirer ce membre ?</h2>
+                <p class="text-secondary">
+                    L’appartenance de
+                    <strong>{{ object.user.get_username }}</strong>
+                    à <strong>{{ active_company.name }}</strong> sera supprimée.
+                </p>
+
+                {% for error in form.non_field_errors %}
+                    <div class="alert alert-danger text-start" role="alert">
+                        {{ error }}
+                    </div>
+                {% endfor %}
+
+                <form method="post">
+                    {% csrf_token %}
+                    <a href="{% url 'accounts:membership_list' %}" class="btn btn-secondary">
+                        Annuler
+                    </a>
+                    <button type="submit" class="btn btn-danger">
+                        Confirmer le retrait
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
