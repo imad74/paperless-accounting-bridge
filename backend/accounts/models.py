@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from companies.models import Company
@@ -6,6 +7,11 @@ from companies.models import Company
 
 class CompanyMembership(models.Model):
     """Associates a user with a company and an application role."""
+
+    LAST_ACTIVE_ADMIN_ERROR = (
+        "Le dernier administrateur actif de la société ne peut pas être "
+        "suspendu, rétrogradé ou supprimé."
+    )
 
     class Role(models.TextChoices):
         ADMIN = "ADMIN", "Administrateur"
@@ -67,3 +73,47 @@ class CompanyMembership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} — {self.company} ({self.get_role_display()})"
+
+    def clean(self):
+        super().clean()
+        if self.pk is None:
+            return
+
+        previous = type(self).objects.filter(pk=self.pk).values(
+            "active",
+            "role",
+            "company_id",
+        ).first()
+        if previous is None:
+            return
+
+        was_active_admin = (
+            previous["active"]
+            and previous["role"] == self.Role.ADMIN
+        )
+        remains_active_admin = (
+            self.active
+            and self.role == self.Role.ADMIN
+            and self.company_id == previous["company_id"]
+        )
+        if was_active_admin and not remains_active_admin:
+            another_admin_exists = type(self).objects.filter(
+                company_id=previous["company_id"],
+                role=self.Role.ADMIN,
+                active=True,
+            ).exclude(pk=self.pk).exists()
+            if not another_admin_exists:
+                raise ValidationError(self.LAST_ACTIVE_ADMIN_ERROR)
+
+    def is_last_active_administrator(self) -> bool:
+        if (
+            self.pk is None
+            or not self.active
+            or self.role != self.Role.ADMIN
+        ):
+            return False
+        return not type(self).objects.filter(
+            company_id=self.company_id,
+            role=self.Role.ADMIN,
+            active=True,
+        ).exclude(pk=self.pk).exists()

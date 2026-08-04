@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if object %}Modifier un membre{% else %}Ajouter un membre{% endif %}
+{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                {% if object %}Modifier un membre{% else %}Ajouter un membre{% endif %}
+            </h2>
+            <div class="text-secondary">{{ active_company.name }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <form method="post">
+                {% csrf_token %}
+                <div class="card-body">
+                    {% for error in form.non_field_errors %}
+                        <div class="alert alert-danger" role="alert">{{ error }}</div>
+                    {% endfor %}
+
+                    {% if object %}
+                        <div class="mb-4">
+                            <label class="form-label">Utilisateur</label>
+                            <div class="form-control-plaintext">
+                                <strong>
+                                    {{ object.user.get_full_name|default:object.user.get_username }}
+                                </strong>
+                                <span class="text-secondary">
+                                    — {{ object.user.get_username }}
+                                    {% if object.user.email %} — {{ object.user.email }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% for field in form.visible_fields %}
+                        {% if field.field.widget.input_type == "checkbox" %}
+                            <div class="mb-3">
+                                <label class="form-check">
+                                    {{ field }}
+                                    <span class="form-check-label">{{ field.label }}</span>
+                                </label>
+                                {% for error in field.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="mb-3">
+                                <label class="form-label" for="{{ field.id_for_label }}">
+                                    {{ field.label }}
+                                </label>
+                                {{ field }}
+                                {% for error in field.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="card-footer text-end">
+                    <a href="{% url 'accounts:membership_list' %}" class="btn btn-secondary">
+                        Annuler
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
