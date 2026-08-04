@@ -220,6 +220,10 @@ FN-000001-2026
 
 Si plusieurs sociétés peuvent employer le même préfixe, le code société doit être intégré au format ou l’unicité de `Document.number` doit être adaptée. Le choix final doit être documenté avant la migration.
 
+Le format retenu et la procédure de migration sont documentés dans
+[`RELEASE-003-NUMBERING.md`](RELEASE-003-NUMBERING.md). Le code société est
+intégré au numéro afin de conserver l’unicité globale de `Document.number`.
+
 ## 7. Matrice minimale des permissions
 
 | Action | ADMIN | MANAGER | OPERATOR | VIEWER |

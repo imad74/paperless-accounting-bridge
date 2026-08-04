@@ -1,54 +1,81 @@
 from datetime import date
 
 from django.db import transaction
-from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
-from .models import DocumentCounter, DocumentType
+from companies.models import Company
+
+from .models import Document, DocumentCounter, DocumentType
 
 
 class NumberingService:
     """Service de génération des numéros de documents."""
 
-    @staticmethod
-    def generate(document_type_code: str) -> str:
+    @classmethod
+    def generate(
+        cls,
+        *,
+        company: Company,
+        document_type_code: str,
+        generation_date: date | None = None,
+    ) -> str:
         """
-        Génère un numéro de document unique.
+        Réserve et renvoie un numéro unique pour une société et un type.
 
         Exemple :
-            FN-000001-2026
+            FN-ACME-000001-2026
         """
 
-        current_year = date.today().year
+        try:
+            company = Company.objects.get(pk=company.pk, active=True)
+        except (AttributeError, Company.DoesNotExist):
+            raise ValueError("La société n’existe pas ou est inactive.") from None
+
+        normalized_code = DocumentType.normalize_identifier(
+            document_type_code
+        )
 
         try:
             document_type = DocumentType.objects.get(
-                code=document_type_code,
+                code=normalized_code,
                 active=True,
             )
-        except ObjectDoesNotExist:
+        except DocumentType.DoesNotExist:
             raise ValueError(
                 f"Le type de document '{document_type_code}' n'existe pas."
-            )
+            ) from None
+
+        effective_date = generation_date or timezone.localdate()
+        current_year = effective_date.year
+        counter_year = current_year if document_type.yearly_reset else 0
 
         with transaction.atomic():
-
-            counter, created = (
+            counter, _ = (
                 DocumentCounter.objects
                 .select_for_update()
                 .get_or_create(
+                    company=company,
                     document_type=document_type,
-                    year=current_year,
+                    year=counter_year,
                     defaults={
                         "current_number": 0,
                     },
                 )
             )
 
-            counter.current_number += 1
-            counter.save(update_fields=["current_number"])
+            sequence = counter.current_number + 1
+            while True:
+                number = (
+                    f"{document_type.prefix}-"
+                    f"{company.code}-"
+                    f"{sequence:06d}-"
+                    f"{current_year}"
+                )
+                if not Document.objects.filter(number=number).exists():
+                    break
+                sequence += 1
 
-        return (
-            f"{document_type.prefix}-"
-            f"{counter.current_number:06d}-"
-            f"{current_year}"
-        )
+            counter.current_number = sequence
+            counter.save(update_fields=("current_number",))
+
+        return number
