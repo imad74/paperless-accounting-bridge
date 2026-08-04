@@ -1,19 +1,42 @@
 <header class="navbar navbar-expand-md d-print-none">
     <div class="container-xl">
 
-        <div class="navbar-nav flex-row ms-auto">
+        <div class="navbar-nav flex-row ms-auto align-items-center">
+
+            {% if request.user.is_authenticated %}
+            <div class="nav-item me-3">
+                <a href="{% url 'accounts:company_select' %}"
+                   class="nav-link d-flex align-items-center">
+                    <div class="text-end">
+                        <div class="small text-secondary">Société active</div>
+                        <div>
+                            {% if active_company %}
+                                {{ active_company.name }}
+                            {% else %}
+                                Choisir une société
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            </div>
 
             <div class="nav-item dropdown">
                 <a href="#" class="nav-link d-flex lh-1 text-reset" data-bs-toggle="dropdown">
 
                     <span class="avatar avatar-sm">
-                        I
+                        {{ request.user.get_username|first|upper }}
                     </span>
 
                     <div class="d-none d-xl-block ps-2">
-                        <div>Imad</div>
+                        <div>
+                            {{ request.user.get_full_name|default:request.user.get_username }}
+                        </div>
                         <div class="mt-1 small text-secondary">
-                            Administrator
+                            {% if active_company_membership %}
+                                {{ active_company_membership.get_role_display }}
+                            {% elif request.user.is_superuser %}
+                                Administrateur applicatif
+                            {% endif %}
                         </div>
                     </div>
 
@@ -21,23 +44,23 @@
 
                 <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
 
-                    <a href="#" class="dropdown-item">
-                        Mon profil
-                    </a>
-
                     <a href="/admin/" class="dropdown-item">
                         Administration
                     </a>
 
                     <div class="dropdown-divider"></div>
 
-                    <a href="#" class="dropdown-item">
-                        Déconnexion
-                    </a>
+                    <form method="post" action="{% url 'admin:logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="dropdown-item">
+                            Déconnexion
+                        </button>
+                    </form>
 
                 </div>
 
             </div>
+            {% endif %}
 
         </div>
 

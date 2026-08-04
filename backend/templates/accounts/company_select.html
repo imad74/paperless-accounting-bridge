@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Choisir une société{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Choisir une société</h2>
+            <div class="text-secondary">
+                Sélectionnez le contexte dans lequel vous souhaitez travailler.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card">
+            {% if has_available_companies %}
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.next }}
+                    <div class="card-body">
+                        <label class="form-label" for="{{ form.membership.id_for_label }}">
+                            {{ form.membership.label }}
+                        </label>
+                        {{ form.membership }}
+                        {% for error in form.membership.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="card-footer text-end">
+                        <button type="submit" class="btn btn-primary">
+                            Utiliser cette société
+                        </button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="card-body">
+                    <div class="alert alert-warning mb-0" role="alert">
+                        Aucune société active ne vous est actuellement attribuée.
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
