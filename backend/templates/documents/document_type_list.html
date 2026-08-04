@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Types documentaires{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Types documentaires</h2>
+            <div class="text-secondary">
+                Gérez les catégories et les règles de numérotation des documents.
+            </div>
+        </div>
+        {% if can_manage_document_types %}
+            <div class="col-auto ms-auto">
+                <a href="{% url 'document_types:create' %}" class="btn btn-primary">
+                    Nouveau type
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="w-100">
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <input
+                        type="search"
+                        class="form-control"
+                        name="q"
+                        value="{{ request.GET.q }}"
+                        placeholder="Rechercher par code, nom ou préfixe"
+                    >
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" name="status">
+                        <option value=""{% if not current_status %} selected{% endif %}>
+                            Tous les statuts
+                        </option>
+                        <option value="active"{% if current_status == "active" %} selected{% endif %}>
+                            Actifs
+                        </option>
+                        <option value="inactive"{% if current_status == "inactive" %} selected{% endif %}>
+                            Inactifs
+                        </option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-outline-primary">
+                        Filtrer
+                    </button>
+                </div>
+                {% if request.GET.q or current_status %}
+                    <div class="col-auto">
+                        <a href="{% url 'document_types:list' %}" class="btn btn-link">
+                            Réinitialiser
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-vcenter table-hover card-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Nom</th>
+                    <th>Préfixe</th>
+                    <th>Réinitialisation</th>
+                    <th>Statut</th>
+                    <th class="w-1">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for document_type in document_types %}
+                    <tr>
+                        <td><strong>{{ document_type.code }}</strong></td>
+                        <td>
+                            <div class="fw-semibold">{{ document_type.name }}</div>
+                            {% if document_type.description %}
+                                <div class="text-secondary small">
+                                    {{ document_type.description|truncatechars:80 }}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-blue-lt">{{ document_type.prefix }}</span></td>
+                        <td>
+                            {% if document_type.yearly_reset %}
+                                Annuelle
+                            {% else %}
+                                Continue
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if document_type.active %}
+                                <span class="badge bg-green">Actif</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactif</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if can_manage_document_types %}
+                                <div class="btn-list flex-nowrap">
+                                    <a
+                                        href="{% url 'document_types:update' document_type.pk %}"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Modifier
+                                    </a>
+                                    <form
+                                        method="post"
+                                        action="{% url 'document_types:toggle_active' document_type.pk %}"
+                                    >
+                                        {% csrf_token %}
+                                        <button
+                                            type="submit"
+                                            class="btn btn-sm {% if document_type.active %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                                        >
+                                            {% if document_type.active %}Désactiver{% else %}Activer{% endif %}
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <span class="text-secondary">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-secondary py-5">
+                            Aucun type documentaire trouvé.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">
+                Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+            </p>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="?page={{ page_obj.previous_page_number }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}"
+                        >
+                            Précédente
+                        </a>
+                    </li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="?page={{ page_obj.next_page_number }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}"
+                        >
+                            Suivante
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from companies.models import Company
@@ -21,6 +22,40 @@ class DocumentType(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @staticmethod
+    def normalize_identifier(value: str) -> str:
+        return (value or "").strip().upper()
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        for field_name, label in (("code", "code"), ("prefix", "préfixe")):
+            normalized_value = self.normalize_identifier(
+                getattr(self, field_name, "")
+            )
+            setattr(self, field_name, normalized_value)
+
+            if not normalized_value:
+                errors[field_name] = f"Le {label} est obligatoire."
+                continue
+
+            duplicate_exists = type(self).objects.filter(
+                **{f"{field_name}__iexact": normalized_value}
+            ).exclude(pk=self.pk).exists()
+            if duplicate_exists:
+                errors[field_name] = (
+                    f"Un type documentaire avec ce {label} existe déjà."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.code = self.normalize_identifier(self.code)
+        self.prefix = self.normalize_identifier(self.prefix)
+        return super().save(*args, **kwargs)
 
 
 class Document(models.Model):

@@ -8,4 +8,8 @@ urlpatterns = [
 
     # Companies
     path("companies/", include("companies.urls")),
+    path(
+        "document-types/",
+        include("documents.document_type_urls"),
+    ),
 ]
