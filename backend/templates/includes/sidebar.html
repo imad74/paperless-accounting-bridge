@@ -47,13 +47,16 @@
             </div>
             {% endif %}
 
+            {% if active_company_membership %}
             <div class="nav-item">
-                <a class="nav-link" href="#">
+                <a class="nav-link {% if request.resolver_match.namespace == 'documents' %}active{% endif %}"
+                   href="{% url 'documents:list' %}">
                     <span class="nav-link-title">
                         📄 Documents
                     </span>
                 </a>
             </div>
+            {% endif %}
 
             <div class="nav-item">
                 <a class="nav-link" href="#">

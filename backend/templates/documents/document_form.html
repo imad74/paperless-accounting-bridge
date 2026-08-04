@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if object %}Modifier un document{% else %}Nouveau document{% endif %}
+{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                {% if object %}Modifier un document{% else %}Nouveau document{% endif %}
+            </h2>
+            <div class="text-secondary">
+                {% if object %}
+                    {{ object.number }} — {{ active_company.name }}
+                {% else %}
+                    Le numéro sera généré automatiquement pour {{ active_company.name }}.
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <form method="post">
+                {% csrf_token %}
+                <div class="card-body">
+                    {% for error in form.non_field_errors %}
+                        <div class="alert alert-danger" role="alert">{{ error }}</div>
+                    {% endfor %}
+
+                    <div class="row">
+                        {% for field in form.visible_fields %}
+                            <div class="{% if field.name == 'notes' %}col-12{% else %}col-md-6{% endif %} mb-3">
+                                <label class="form-label" for="{{ field.id_for_label }}">
+                                    {{ field.label }}
+                                </label>
+                                {{ field }}
+                                {% for error in field.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card-footer text-end">
+                    <a href="{% url 'documents:list' %}" class="btn btn-secondary">
+                        Annuler
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
