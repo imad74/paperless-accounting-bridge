@@ -35,6 +35,14 @@ Paperless Accounting Bridge (PAB) est une application Django permettant de gére
    - http://localhost:8000/
    - http://localhost:8000/health/
 
+Le fichier `.env` est strictement local. Ne le commitez jamais et remplacez
+toutes les valeurs de développement avant un déploiement.
+
+Docker Compose charge automatiquement `docker-compose.override.yml` en
+développement afin de monter le code et d’utiliser `runserver`. Le déploiement
+doit charger uniquement `docker-compose.yml`, qui conserve la commande Gunicorn
+de l’image.
+
 ### Sans Docker
 
 ```bash
@@ -43,6 +51,12 @@ pip install -r ../requirements.txt
 python manage.py migrate
 python manage.py runserver
 ```
+
+## Déploiement et sécurité
+
+Consultez le [guide de déploiement](docs/DEPLOYMENT.md) avant toute mise en
+production. Il décrit les variables obligatoires, la rotation des secrets,
+les sauvegardes, les contrôles Django et la procédure de retour arrière.
 
 ## Auteur
 
