@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Documents{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Documents</h2>
+            <div class="text-secondary">
+                Consultez les documents de {{ active_company.name }}.
+            </div>
+        </div>
+        {% if can_change_documents %}
+            <div class="col-auto ms-auto">
+                <a href="{% url 'documents:create' %}" class="btn btn-primary">
+                    Nouveau document
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="w-100" novalidate>
+            <div class="row g-2 align-items-end">
+                <div class="col-lg-4 col-md-6">
+                    <label class="form-label" for="{{ filter_form.q.id_for_label }}">
+                        {{ filter_form.q.label }}
+                    </label>
+                    {{ filter_form.q }}
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label" for="{{ filter_form.document_type.id_for_label }}">
+                        {{ filter_form.document_type.label }}
+                    </label>
+                    {{ filter_form.document_type }}
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label" for="{{ filter_form.status.id_for_label }}">
+                        {{ filter_form.status.label }}
+                    </label>
+                    {{ filter_form.status }}
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label" for="{{ filter_form.period.id_for_label }}">
+                        {{ filter_form.period.label }}
+                    </label>
+                    {{ filter_form.period }}
+                    {% for error in filter_form.period.errors %}
+                        <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-outline-primary">Filtrer</button>
+                </div>
+                {% if request.GET %}
+                    <div class="col-auto">
+                        <a href="{% url 'documents:list' %}" class="btn btn-link">
+                            Réinitialiser
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-vcenter table-hover card-table">
+            <thead>
+                <tr>
+                    <th>Numéro</th>
+                    <th>Document</th>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th class="text-end">Montant</th>
+                    <th>Statut</th>
+                    <th class="w-1">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for document in documents %}
+                    <tr>
+                        <td><strong>{{ document.number }}</strong></td>
+                        <td>
+                            <div class="fw-semibold">{{ document.title }}</div>
+                            {% if document.notes %}
+                                <div class="text-secondary small">
+                                    {{ document.notes|truncatechars:80 }}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>{{ document.document_type.name }}</td>
+                        <td>{{ document.document_date|date:"d/m/Y" }}</td>
+                        <td class="text-end">
+                            {{ document.amount|floatformat:2 }} {{ document.currency }}
+                        </td>
+                        <td>
+                            {% if document.status == "NEW" %}
+                                <span class="badge bg-blue-lt">Nouveau</span>
+                            {% elif document.status == "IMPORTED" %}
+                                <span class="badge bg-green">Importé</span>
+                            {% elif document.status == "FAILED" %}
+                                <span class="badge bg-red">En erreur</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Archivé</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-list flex-nowrap">
+                                {% if can_change_documents %}
+                                    <a
+                                        href="{% url 'documents:update' document.pk %}"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Modifier
+                                    </a>
+                                {% endif %}
+                                {% if can_archive_documents and document.status != "ARCHIVED" %}
+                                    <form
+                                        method="post"
+                                        action="{% url 'documents:archive' document.pk %}"
+                                    >
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                                            Archiver
+                                        </button>
+                                    </form>
+                                {% endif %}
+                                {% if not can_change_documents and not can_archive_documents %}
+                                    <span class="text-secondary">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-secondary py-5">
+                            Aucun document trouvé.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">
+                Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+            </p>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="?page={{ page_obj.previous_page_number }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}"
+                        >
+                            Précédente
+                        </a>
+                    </li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a
+                            class="page-link"
+                            href="?page={{ page_obj.next_page_number }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}"
+                        >
+                            Suivante
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
