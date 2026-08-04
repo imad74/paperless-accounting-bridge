@@ -2,18 +2,20 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.generic import View
 
+from accounts.mixins import ActiveCompanyRequiredMixin
 
-class HomeView(View):
+
+class HomeView(ActiveCompanyRequiredMixin, View):
     """Render the landing page for the application."""
 
     def get(self, request):
         return render(
-    request,
-    "dashboard/home.html",
-    {
-        "title": "Paperless Accounting Bridge",
-    },
-)
+            request,
+            "dashboard/home.html",
+            {
+                "title": "Paperless Accounting Bridge",
+            },
+        )
 
 
 def health_check(request):

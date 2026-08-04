@@ -19,6 +19,11 @@
 
         <div class="col-auto ms-auto">
 
+            <a href="{% url 'accounts:company_select' %}" class="btn btn-outline-primary">
+                Changer de société
+            </a>
+
+            {% if request.user.is_superuser %}
             <a href="{% url 'companies:create' %}" class="btn btn-primary">
 
                 <svg xmlns="http://www.w3.org/2000/svg"
@@ -35,9 +40,10 @@
 
                 </svg>
 
-                New Company
+                Nouvelle société
 
             </a>
+            {% endif %}
 
         </div>
 
@@ -162,21 +168,21 @@
 
                     <td>
 
-                        <a
-                            href="{% url 'companies:update' company.pk %}"
-                            class="btn btn-sm btn-outline-primary">
+                        {% if company.pk == active_company.pk and can_manage_active_company %}
+                            <a
+                                href="{% url 'companies:update' company.pk %}"
+                                class="btn btn-sm btn-outline-primary">
+                                Modifier
+                            </a>
 
-                            Edit
-
-                        </a>
-
-                        <a
-                            href="{% url 'companies:delete' company.pk %}"
-                            class="btn btn-sm btn-outline-danger">
-
-                            Delete
-
-                        </a>
+                            <a
+                                href="{% url 'companies:delete' company.pk %}"
+                                class="btn btn-sm btn-outline-danger">
+                                Supprimer
+                            </a>
+                        {% else %}
+                            <span class="text-secondary">—</span>
+                        {% endif %}
 
                     </td>
 
