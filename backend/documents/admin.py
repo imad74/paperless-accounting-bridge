@@ -35,19 +35,35 @@ class DocumentTypeAdmin(admin.ModelAdmin):
 class DocumentCounterAdmin(admin.ModelAdmin):
 
     list_display = (
+        "company",
         "document_type",
         "year",
         "current_number",
     )
 
     list_filter = (
+        "company",
         "year",
     )
 
+    autocomplete_fields = (
+        "company",
+        "document_type",
+    )
+
     ordering = (
+        "company",
         "-year",
         "document_type",
     )
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Document)

@@ -103,6 +103,12 @@ class Document(models.Model):
 class DocumentCounter(models.Model):
     """Tracks the current counter used to generate document numbers."""
 
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="document_counters",
+        verbose_name="company",
+    )
     document_type = models.ForeignKey(DocumentType, on_delete=models.CASCADE, related_name="counters", verbose_name="document type")
     year = models.PositiveIntegerField(verbose_name="year")
     current_number = models.PositiveIntegerField(default=0, verbose_name="current number")
@@ -110,10 +116,28 @@ class DocumentCounter(models.Model):
     class Meta:
         verbose_name = "document counter"
         verbose_name_plural = "document counters"
-        ordering = ["document_type__code", "year"]
+        ordering = ["company__code", "document_type__code", "year"]
         constraints = [
-            models.UniqueConstraint(fields=["document_type", "year"], name="unique_document_counter_per_year"),
+            models.UniqueConstraint(
+                fields=["company", "document_type", "year"],
+                name="unique_document_counter_scope",
+            ),
         ]
 
+    def clean(self):
+        super().clean()
+        if not self.document_type_id:
+            return
+
+        if self.document_type.yearly_reset and self.year == 0:
+            raise ValidationError(
+                {"year": "Un compteur annuel doit utiliser une année réelle."}
+            )
+        if not self.document_type.yearly_reset and self.year != 0:
+            raise ValidationError(
+                {"year": "Un compteur continu doit utiliser l’année technique 0."}
+            )
+
     def __str__(self) -> str:
-        return f"{self.document_type.prefix}-{self.year}"
+        period = self.year if self.year else "continu"
+        return f"{self.company.code}-{self.document_type.prefix}-{period}"
