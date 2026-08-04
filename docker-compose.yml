@@ -1,35 +1,47 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-paperless}
       POSTGRES_USER: ${DB_USER:-paperless}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-paperless}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   web:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "python backend/manage.py migrate && python backend/manage.py runserver 0.0.0.0:8000"
+    init: true
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-change-me}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:8000}
       DB_NAME: ${DB_NAME:-paperless}
       DB_USER: ${DB_USER:-paperless}
       DB_PASSWORD: ${DB_PASSWORD:-paperless}
       DB_HOST: db
       DB_PORT: 5432
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
-      - .:/app
+      - staticfiles_data:/app/backend/staticfiles
+      - media_data:/app/backend/media
 
 volumes:
   postgres_data:
+  staticfiles_data:
+  media_data:

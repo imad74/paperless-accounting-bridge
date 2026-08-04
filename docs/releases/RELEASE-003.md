@@ -3,7 +3,7 @@
 ## 1. Statut
 
 - **Version cible** : Release 003
-- **Statut** : Spécification proposée
+- **Statut** : Implémentation terminée — rotation des secrets requise avant déploiement
 - **Branche cible** : `develop`
 - **Périmètre** : authentification, rattachement utilisateur–société, permissions, types documentaires, numérotation et interface associée
 
@@ -282,6 +282,10 @@ Pour une installation existante, une stratégie documentée doit permettre :
 - d’affecter les anciens compteurs à une société ;
 - de signaler toute donnée impossible à migrer automatiquement.
 
+La procédure opérationnelle, la préparation des appartenances administrateur,
+la rotation des secrets et le retour arrière sont décrits dans le
+[`guide de déploiement`](../DEPLOYMENT.md).
+
 ## 10. Sécurité
 
 - Toutes les mutations utilisent POST.
@@ -427,7 +431,7 @@ docker compose run --rm web python backend/manage.py check --deploy
 docker compose run --rm web python backend/manage.py makemigrations --check --dry-run
 docker compose run --rm web python backend/manage.py migrate --plan
 docker compose run --rm web python backend/manage.py migrate
-docker compose run --rm web python backend/manage.py test
+docker compose run --rm web python backend/manage.py test accounts companies documents
 docker compose run --rm web python backend/manage.py collectstatic --noinput
 ```
 
