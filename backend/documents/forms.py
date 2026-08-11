@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from django import forms
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 from .models import Document, DocumentType
@@ -7,6 +11,10 @@ from .models import Document, DocumentType
 class DocumentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.pdf_file:
+            self.fields.pop("pdf_file", None)
+        elif not self.instance.pk:
+            self.fields["pdf_file"].required = True
         document_types = DocumentType.objects.filter(active=True)
         if self.instance.pk and self.instance.document_type_id:
             document_types = DocumentType.objects.filter(
@@ -18,6 +26,7 @@ class DocumentForm(forms.ModelForm):
     class Meta:
         model = Document
         fields = [
+            "pdf_file",
             "title",
             "document_type",
             "document_date",
@@ -26,6 +35,7 @@ class DocumentForm(forms.ModelForm):
             "notes",
         ]
         labels = {
+            "pdf_file": "Document PDF scanné",
             "title": "Titre",
             "document_type": "Type documentaire",
             "document_date": "Date du document",
@@ -34,6 +44,12 @@ class DocumentForm(forms.ModelForm):
             "notes": "Notes",
         }
         widgets = {
+            "pdf_file": forms.ClearableFileInput(
+                attrs={
+                    "class": "form-control",
+                    "accept": "application/pdf,.pdf",
+                }
+            ),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "document_type": forms.Select(attrs={"class": "form-select"}),
             "document_date": forms.DateInput(
@@ -52,6 +68,29 @@ class DocumentForm(forms.ModelForm):
 
     def clean_currency(self):
         return self.cleaned_data["currency"].strip().upper()
+
+    def clean_pdf_file(self):
+        pdf_file = self.cleaned_data.get("pdf_file")
+        if pdf_file is None:
+            return pdf_file
+
+        if Path(pdf_file.name).suffix.lower() != ".pdf":
+            raise ValidationError("Sélectionnez un fichier au format PDF.")
+        if pdf_file.size > settings.DOCUMENT_PDF_MAX_BYTES:
+            max_size_mb = settings.DOCUMENT_PDF_MAX_BYTES // (1024 * 1024)
+            raise ValidationError(
+                f"Le fichier PDF ne doit pas dépasser {max_size_mb} Mo."
+            )
+
+        current_position = pdf_file.tell()
+        pdf_file.seek(0)
+        header = pdf_file.read(1024)
+        pdf_file.seek(current_position)
+        if b"%PDF-" not in header:
+            raise ValidationError(
+                "Le fichier transmis ne contient pas un PDF valide."
+            )
+        return pdf_file
 
 
 class DocumentFilterForm(forms.Form):

@@ -1,9 +1,12 @@
 from datetime import date
 from decimal import Decimal
+from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.test import override_settings
 from django.urls import reverse
+from pypdf import PdfReader
 
 from accounts.models import CompanyMembership
 from accounts.services import ACTIVE_COMPANY_SESSION_KEY
@@ -11,12 +14,15 @@ from companies.models import Company
 from documents.forms import DocumentForm
 from documents.models import Document, DocumentType
 
+from .pdf_helpers import make_pdf_upload
+
 
 class DocumentFormTests(TestCase):
     def test_only_business_fields_are_exposed(self):
         self.assertEqual(
             list(DocumentForm().fields),
             [
+                "pdf_file",
                 "title",
                 "document_type",
                 "document_date",
@@ -40,11 +46,32 @@ class DocumentFormTests(TestCase):
                 "amount": "10.00",
                 "currency": " eur ",
                 "notes": "",
-            }
+            },
+            files={"pdf_file": make_pdf_upload()},
         )
 
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["currency"], "EUR")
+
+    def test_pdf_is_required_when_creating_a_document(self):
+        document_type = DocumentType.objects.create(
+            code="REQ",
+            name="PDF obligatoire",
+            prefix="REQ",
+        )
+        form = DocumentForm(
+            data={
+                "title": "Document sans scan",
+                "document_type": document_type.pk,
+                "document_date": "2026-08-04",
+                "amount": "0.00",
+                "currency": "MAD",
+                "notes": "",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("pdf_file", form.errors)
 
 
 class DocumentViewTests(TestCase):
@@ -127,6 +154,16 @@ class DocumentViewTests(TestCase):
             document_date=date(2026, 8, 4),
         )
 
+    def setUp(self):
+        super().setUp()
+        self.media_directory = TemporaryDirectory()
+        self.addCleanup(self.media_directory.cleanup)
+        settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name
+        )
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
+
     def login_with_company(self, role):
         self.client.force_login(self.users[role])
         session = self.client.session
@@ -145,9 +182,18 @@ class DocumentViewTests(TestCase):
         data.update(overrides)
         return data
 
+    def document_create_data(self, **overrides):
+        data = self.document_data(**overrides)
+        data["pdf_file"] = make_pdf_upload()
+        return data
+
     def test_documents_are_mounted_in_the_main_routing(self):
         self.assertEqual(reverse("documents:list"), "/documents/")
         self.assertEqual(reverse("documents:create"), "/documents/new/")
+        self.assertEqual(
+            reverse("documents:download", args=[self.document.pk]),
+            f"/documents/{self.document.pk}/file/",
+        )
 
     def test_anonymous_user_is_redirected_to_login(self):
         response = self.client.get(reverse("documents:list"))
@@ -309,7 +355,7 @@ class DocumentViewTests(TestCase):
 
         response = self.client.post(
             reverse("documents:create"),
-            data,
+            {**data, "pdf_file": make_pdf_upload()},
             follow=True,
         )
 
@@ -323,16 +369,87 @@ class DocumentViewTests(TestCase):
         self.assertEqual(document.status, Document.Status.NEW)
         self.assertEqual(document.number, "AC-DOC-A-000001-2026")
         self.assertEqual(document.currency, "MAD")
-        self.assertEqual(document.stored_filename, "")
-        self.assertIsNone(document.sha256)
-        self.assertContains(response, "Document créé avec succès.")
+        self.assertEqual(document.original_filename, "scan.pdf")
+        self.assertEqual(document.stored_filename, "00000001.pdf")
+        self.assertEqual(document.pdf_file.name, "documents/00000001.pdf")
+        self.assertEqual(len(document.sha256), 64)
+        with document.pdf_file.open("rb") as pdf_stream:
+            stamped_pdf = PdfReader(pdf_stream)
+            self.assertIn(
+                "00000001.pdf",
+                stamped_pdf.pages[0].extract_text(),
+            )
+        self.assertContains(response, "00000001.pdf")
+
+    def test_duplicate_pdf_is_rejected_without_creating_a_second_document(self):
+        self.login_with_company(CompanyMembership.Role.OPERATOR)
+
+        first_response = self.client.post(
+            reverse("documents:create"),
+            self.document_create_data(title="Premier scan"),
+            follow=True,
+        )
+        second_response = self.client.post(
+            reverse("documents:create"),
+            self.document_create_data(title="Scan dupliqué"),
+        )
+
+        self.assertRedirects(first_response, reverse("documents:list"))
+        self.assertEqual(second_response.status_code, 200)
+        self.assertFormError(
+            second_response.context["form"],
+            "pdf_file",
+            "Ce fichier PDF a déjà été enregistré.",
+        )
+        self.assertEqual(
+            Document.objects.filter(
+                title__in=("Premier scan", "Scan dupliqué")
+            ).count(),
+            1,
+        )
+
+    def test_pdf_download_is_inline_and_scoped_to_the_active_company(self):
+        self.login_with_company(CompanyMembership.Role.OPERATOR)
+        self.client.post(
+            reverse("documents:create"),
+            self.document_create_data(title="PDF protégé"),
+        )
+        document = Document.objects.get(title="PDF protégé")
+
+        self.client.logout()
+        self.login_with_company(CompanyMembership.Role.VIEWER)
+        allowed_response = self.client.get(
+            reverse("documents:download", args=[document.pk])
+        )
+
+        CompanyMembership.objects.create(
+            user=self.users[CompanyMembership.Role.ADMIN],
+            company=self.other_company,
+            role=CompanyMembership.Role.ADMIN,
+        )
+        self.client.logout()
+        self.client.force_login(self.users[CompanyMembership.Role.ADMIN])
+        session = self.client.session
+        session[ACTIVE_COMPANY_SESSION_KEY] = self.other_company.pk
+        session.save()
+        forbidden_response = self.client.get(
+            reverse("documents:download", args=[document.pk])
+        )
+
+        self.assertEqual(allowed_response.status_code, 200)
+        self.assertEqual(allowed_response["Content-Type"], "application/pdf")
+        self.assertIn("inline", allowed_response["Content-Disposition"])
+        self.assertIn("00000001.pdf", allowed_response["Content-Disposition"])
+        self.assertEqual(forbidden_response.status_code, 404)
 
     def test_inactive_document_type_cannot_be_used_for_creation(self):
         self.login_with_company(CompanyMembership.Role.OPERATOR)
 
         response = self.client.post(
             reverse("documents:create"),
-            self.document_data(document_type=self.inactive_type.pk),
+            self.document_create_data(
+                document_type=self.inactive_type.pk
+            ),
         )
 
         self.assertEqual(response.status_code, 200)
@@ -365,6 +482,33 @@ class DocumentViewTests(TestCase):
         self.assertEqual(self.document.number, original_number)
         self.assertEqual(self.document.status, Document.Status.NEW)
         self.assertContains(response, "Document modifié avec succès.")
+
+    def test_pdf_can_be_attached_to_a_historical_document(self):
+        self.login_with_company(CompanyMembership.Role.OPERATOR)
+        original_number = self.document.number
+
+        response = self.client.post(
+            reverse("documents:update", args=[self.document.pk]),
+            {
+                **self.document_data(
+                    title="Facture Alpha numérisée",
+                    document_type=self.invoice_type.pk,
+                ),
+                "pdf_file": make_pdf_upload(name="alpha-scan.pdf"),
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("documents:list"))
+        self.document.refresh_from_db()
+        self.assertEqual(self.document.number, original_number)
+        self.assertEqual(self.document.original_filename, "alpha-scan.pdf")
+        self.assertEqual(self.document.stored_filename, "00000001.pdf")
+        self.assertEqual(
+            self.document.pdf_file.name,
+            "documents/00000001.pdf",
+        )
+        self.assertContains(response, "00000001.pdf")
 
     def test_update_and_archive_cannot_target_another_company(self):
         self.login_with_company(CompanyMembership.Role.ADMIN)

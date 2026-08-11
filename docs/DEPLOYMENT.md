@@ -48,8 +48,34 @@ DB_USER=paperless
 DB_PASSWORD=<mot-de-passe-unique>
 DB_HOST=db
 DB_PORT=5432
+WEB_BIND_ADDRESS=127.0.0.1
+WEB_HOST_PORT=8010
+DB_BIND_ADDRESS=127.0.0.1
+DB_HOST_PORT=5433
+PAB_UID=1000
+PAB_GID=1000
 DJANGO_TRUST_PROXY_HEADERS=True
+SCAN_INPUT_HOST_PATH=/opt/pab/incoming
+PAPERLESS_CONSUME_HOST_PATH=/opt/paperless/consume
 ```
+
+Le worker de scan est isolé dans le profil `scan-import` et reste arrêté par
+défaut. Sur le VPS OVH actuel, Paperless occupe déjà le port public `8000` ;
+PAB écoute donc uniquement sur `127.0.0.1:8010`. Le port PostgreSQL hôte `5433`
+est également limité à la boucle locale. Les ports internes aux conteneurs
+restent respectivement `8000` et `5432`.
+
+`PAB_UID` et `PAB_GID` doivent correspondre aux valeurs retournées par
+`id -u imad` et `id -g imad`. L’image crée ainsi son utilisateur non privilégié
+avec les mêmes identifiants que le propriétaire de `/opt/pab/incoming` et de
+`/opt/paperless/consume`, sans rendre ces dossiers accessibles en écriture à
+tous les utilisateurs.
+
+Avant l’activation du worker, Syncthing doit transférer exclusivement les scans
+bruts de `F:/scan` vers `/opt/pab/incoming`. Aucun partage ne doit encore les
+livrer directement dans `/opt/paperless/consume`. La procédure complète figure
+dans
+[`releases/RELEASE-004.md`](releases/RELEASE-004.md).
 
 Lorsque `DJANGO_DEBUG=False`, l’application active par défaut la redirection
 HTTPS, les cookies sécurisés et HSTS. N’activez
@@ -104,7 +130,7 @@ docker compose -f docker-compose.yml run --rm web python backend/manage.py check
 docker compose -f docker-compose.yml run --rm web python backend/manage.py check --deploy
 docker compose -f docker-compose.yml run --rm web python backend/manage.py makemigrations --check --dry-run
 docker compose -f docker-compose.yml run --rm web python backend/manage.py migrate --plan
-docker compose -f docker-compose.yml run --rm web python backend/manage.py test accounts companies documents
+docker compose -f docker-compose.yml run --rm web python backend/manage.py test accounts companies documents imports
 docker compose -f docker-compose.yml run --rm web python backend/manage.py collectstatic --noinput
 ```
 
@@ -137,6 +163,18 @@ curl --fail https://pab.example.com/health/
 
 Contrôlez manuellement la connexion, la sélection de société, les permissions
 des quatre rôles, la liste documentaire et la génération d’un numéro.
+
+Après validation du partage Syncthing et uniquement lorsque
+`/opt/pab/incoming` est vide, démarrez le worker :
+
+```bash
+docker compose -f docker-compose.yml --profile scan-import up -d scan-worker
+docker compose -f docker-compose.yml --profile scan-import ps
+docker compose -f docker-compose.yml --profile scan-import logs --tail=100 scan-worker
+```
+
+Le journal doit contenir `Surveillance automatique des scans démarrée.` avant
+le dépôt du PDF pilote.
 
 ## 6. Retour arrière
 

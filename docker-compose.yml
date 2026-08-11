@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${DB_USER:-paperless}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-paperless}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,25 +21,75 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PAB_UID: ${PAB_UID:-999}
+        PAB_GID: ${PAB_GID:-999}
     init: true
+    env_file:
+      - path: .env
+        required: false
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-change-me}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:8000}
+      DOCUMENT_PDF_MAX_BYTES: ${DOCUMENT_PDF_MAX_BYTES:-26214400}
       DB_NAME: ${DB_NAME:-paperless}
       DB_USER: ${DB_USER:-paperless}
       DB_PASSWORD: ${DB_PASSWORD:-paperless}
       DB_HOST: db
       DB_PORT: 5432
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - staticfiles_data:/app/backend/staticfiles
       - media_data:/app/backend/media
+
+  scan-worker:
+    profiles: ["scan-import"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PAB_UID: ${PAB_UID:-999}
+        PAB_GID: ${PAB_GID:-999}
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+    command: python backend/manage.py watch_scan_folder
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-change-me}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
+      DOCUMENT_PDF_MAX_BYTES: ${DOCUMENT_PDF_MAX_BYTES:-26214400}
+      DB_NAME: ${DB_NAME:-paperless}
+      DB_USER: ${DB_USER:-paperless}
+      DB_PASSWORD: ${DB_PASSWORD:-paperless}
+      DB_HOST: db
+      DB_PORT: 5432
+      SCAN_INPUT_DIRECTORY: /scan/incoming
+      SCAN_PAPERLESS_DIRECTORY: /scan/paperless-consume
+      SCAN_STABILITY_SECONDS: ${SCAN_STABILITY_SECONDS:-10}
+      SCAN_POLL_SECONDS: ${SCAN_POLL_SECONDS:-5}
+      SCAN_DEFAULT_COMPANY_CODE: ${SCAN_DEFAULT_COMPANY_CODE:-}
+      SCAN_DEFAULT_DOCUMENT_TYPE_CODE: ${SCAN_DEFAULT_DOCUMENT_TYPE_CODE:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/backend/media
+      - type: bind
+        source: ${SCAN_INPUT_HOST_PATH:-./scan}
+        target: /scan/incoming
+      - type: bind
+        source: ${PAPERLESS_CONSUME_HOST_PATH:-./paperless-consume}
+        target: /scan/paperless-consume
 
 volumes:
   postgres_data:

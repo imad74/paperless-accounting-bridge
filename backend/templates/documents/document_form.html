@@ -15,7 +15,7 @@
                 {% if object %}
                     {{ object.number }} — {{ active_company.name }}
                 {% else %}
-                    Le numéro sera généré automatiquement pour {{ active_company.name }}.
+                    Le numéro métier et le nom PDF sur 8 chiffres seront générés automatiquement pour {{ active_company.name }}.
                 {% endif %}
             </div>
         </div>
@@ -25,7 +25,7 @@
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="card">
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="card-body">
                     {% for error in form.non_field_errors %}
@@ -34,17 +34,31 @@
 
                     <div class="row">
                         {% for field in form.visible_fields %}
-                            <div class="{% if field.name == 'notes' %}col-12{% else %}col-md-6{% endif %} mb-3">
+                            <div class="{% if field.name == 'notes' or field.name == 'pdf_file' %}col-12{% else %}col-md-6{% endif %} mb-3">
                                 <label class="form-label" for="{{ field.id_for_label }}">
                                     {{ field.label }}
                                 </label>
                                 {{ field }}
+                                {% if field.name == "pdf_file" %}
+                                    <div class="form-hint">
+                                        PDF uniquement. Son nom sera imprimé en haut à droite de chaque page.
+                                        {% if object %}Le numéro métier existant sera conservé.{% endif %}
+                                    </div>
+                                {% endif %}
                                 {% for error in field.errors %}
                                     <div class="invalid-feedback d-block">{{ error }}</div>
                                 {% endfor %}
                             </div>
                         {% endfor %}
                     </div>
+                    {% if object.pdf_file %}
+                        <div class="alert alert-info" role="status">
+                            Fichier associé :
+                            <a href="{% url 'documents:download' object.pk %}" target="_blank" rel="noopener">
+                                {{ object.stored_filename }}
+                            </a>
+                        </div>
+                    {% endif %}
                 </div>
                 <div class="card-footer text-end">
                     <a href="{% url 'documents:list' %}" class="btn btn-secondary">

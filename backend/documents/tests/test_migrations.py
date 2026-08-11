@@ -19,6 +19,10 @@ class DocumentCounterMigrationTests(TransactionTestCase):
         company_migration,
         ("documents", "0004_finalize_document_counters"),
     ]
+    migrate_latest = [
+        company_migration,
+        ("documents", "0005_document_pdf_storage"),
+    ]
 
     def migrate(self, targets):
         executor = MigrationExecutor(connection)
@@ -26,7 +30,7 @@ class DocumentCounterMigrationTests(TransactionTestCase):
         return executor.loader.project_state(targets).apps
 
     def tearDown(self):
-        self.migrate(self.migrate_to)
+        self.migrate(self.migrate_latest)
         super().tearDown()
 
     def test_single_company_is_assigned_to_existing_counter(self):
@@ -167,3 +171,79 @@ class DocumentCounterMigrationTests(TransactionTestCase):
         self.assertEqual(len(counters), 1)
         self.assertEqual(counters[0].year, 0)
         self.assertEqual(counters[0].current_number, 12)
+
+
+class DocumentPdfStorageMigrationTests(TransactionTestCase):
+    company_migration = (
+        "companies",
+        "0002_alter_company_options_company_contact_company_ice_and_more",
+    )
+    migrate_from = [
+        company_migration,
+        ("documents", "0004_finalize_document_counters"),
+    ]
+    migrate_to = [
+        company_migration,
+        ("documents", "0005_document_pdf_storage"),
+    ]
+
+    def migrate(self, targets):
+        executor = MigrationExecutor(connection)
+        executor.migrate(targets)
+        return executor.loader.project_state(targets).apps
+
+    def tearDown(self):
+        self.migrate(self.migrate_to)
+        super().tearDown()
+
+    def test_counter_starts_at_highest_existing_numeric_pdf_filename(self):
+        old_apps = self.migrate(self.migrate_from)
+        Company = old_apps.get_model("companies", "Company")
+        Document = old_apps.get_model("documents", "Document")
+        DocumentType = old_apps.get_model("documents", "DocumentType")
+        company = Company.objects.create(code="PDF", name="PDF")
+        document_type = DocumentType.objects.create(
+            code="PDF",
+            name="PDF",
+            prefix="PDF",
+        )
+        Document.objects.create(
+            number="PDF-PDF-000001-2026",
+            title="Document historique",
+            company=company,
+            document_type=document_type,
+            original_filename="scan.pdf",
+            stored_filename="00000042.pdf",
+            document_date=date(2026, 1, 1),
+        )
+        Document.objects.create(
+            number="PDF-PDF-000002-2026",
+            title="Ancien nom dupliqué",
+            company=company,
+            document_type=document_type,
+            original_filename="autre-scan.pdf",
+            stored_filename="00000042.pdf",
+            document_date=date(2026, 1, 2),
+        )
+
+        new_apps = self.migrate(self.migrate_to)
+        DocumentFileCounter = new_apps.get_model(
+            "documents",
+            "DocumentFileCounter",
+        )
+        MigratedDocument = new_apps.get_model(
+            "documents",
+            "Document",
+        )
+
+        self.assertEqual(
+            DocumentFileCounter.objects.get(key="pdf").current_number,
+            42,
+        )
+        self.assertEqual(MigratedDocument.objects.count(), 2)
+        self.assertTrue(
+            all(
+                document.pdf_file.name == ""
+                for document in MigratedDocument.objects.all()
+            )
+        )
