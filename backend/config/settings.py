@@ -164,6 +164,26 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+DOCUMENT_PDF_MAX_BYTES = env_int(
+    "DOCUMENT_PDF_MAX_BYTES",
+    25 * 1024 * 1024,
+)
+SCAN_INPUT_DIRECTORY = Path(
+    os.getenv("SCAN_INPUT_DIRECTORY", "/scan/incoming")
+)
+SCAN_PAPERLESS_DIRECTORY = Path(
+    os.getenv("SCAN_PAPERLESS_DIRECTORY", "/scan/paperless-consume")
+)
+SCAN_STABILITY_SECONDS = env_int("SCAN_STABILITY_SECONDS", 10)
+SCAN_POLL_SECONDS = env_int("SCAN_POLL_SECONDS", 5)
+SCAN_DEFAULT_COMPANY_CODE = os.getenv(
+    "SCAN_DEFAULT_COMPANY_CODE",
+    "",
+).strip()
+SCAN_DEFAULT_DOCUMENT_TYPE_CODE = os.getenv(
+    "SCAN_DEFAULT_DOCUMENT_TYPE_CODE",
+    "",
+).strip()
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/admin/login/"

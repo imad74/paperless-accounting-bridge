@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     Document,
     DocumentCounter,
+    DocumentFileCounter,
     DocumentType,
 )
 
@@ -71,6 +72,7 @@ class DocumentAdmin(admin.ModelAdmin):
 
     list_display = (
         "number",
+        "stored_filename",
         "title",
         "company",
         "document_type",
@@ -91,6 +93,7 @@ class DocumentAdmin(admin.ModelAdmin):
         "number",
         "title",
         "original_filename",
+        "stored_filename",
     )
 
     autocomplete_fields = (
@@ -101,3 +104,15 @@ class DocumentAdmin(admin.ModelAdmin):
     ordering = (
         "-created_at",
     )
+
+
+@admin.register(DocumentFileCounter)
+class DocumentFileCounterAdmin(admin.ModelAdmin):
+    list_display = ("key", "current_number")
+    readonly_fields = ("key", "current_number")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -9,9 +9,16 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-RUN groupadd --system pab && useradd --system --gid pab --home-dir /app pab
+ARG PAB_UID=999
+ARG PAB_GID=999
+
+RUN groupadd --gid "${PAB_GID}" pab \
+    && useradd --uid "${PAB_UID}" --gid pab --home-dir /app \
+        --no-create-home --no-log-init --shell /usr/sbin/nologin pab
 
 COPY --chown=pab:pab backend ./backend
+RUN mkdir -p /app/backend/staticfiles /app/backend/media \
+    && chown -R pab:pab /app/backend/staticfiles /app/backend/media
 
 USER pab
 

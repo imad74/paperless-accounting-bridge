@@ -38,6 +38,13 @@ Paperless Accounting Bridge (PAB) est une application Django permettant de gére
 Le fichier `.env` est strictement local. Ne le commitez jamais et remplacez
 toutes les valeurs de développement avant un déploiement.
 
+L’import automatique des scans est fourni par le profil Docker optionnel
+`scan-import`. Sur le VPS, Syncthing livre les scans bruts dans
+`/opt/pab/incoming`, puis PAB remet les PDF marqués dans
+`/opt/paperless/consume`. Le worker doit être activé uniquement après avoir
+supprimé tout flux direct concurrent entre ces deux étapes. Consultez
+[`docs/releases/RELEASE-004.md`](docs/releases/RELEASE-004.md).
+
 Docker Compose charge automatiquement `docker-compose.override.yml` en
 développement afin de monter le code et d’utiliser `runserver`. Le déploiement
 doit charger uniquement `docker-compose.yml`, qui conserve la commande Gunicorn

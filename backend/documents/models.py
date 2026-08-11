@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models
+from django.db.models import Q
 
 from companies.models import Company
 
@@ -72,8 +74,25 @@ class Document(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="documents", verbose_name="company")
     document_type = models.ForeignKey(DocumentType, on_delete=models.PROTECT, related_name="documents", verbose_name="document type")
     paperless_id = models.IntegerField(null=True, blank=True, verbose_name="paperless id")
-    original_filename = models.CharField(max_length=255, verbose_name="original filename")
-    stored_filename = models.CharField(max_length=255, verbose_name="stored filename")
+    original_filename = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="original filename",
+    )
+    stored_filename = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="stored filename",
+    )
+    pdf_file = models.FileField(
+        upload_to="documents/",
+        max_length=255,
+        blank=True,
+        verbose_name="PDF file",
+    )
     document_date = models.DateField(verbose_name="document date")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="amount")
     currency = models.CharField(max_length=3, default="MAD", verbose_name="currency")
@@ -94,6 +113,13 @@ class Document(models.Model):
             models.Index(fields=["document_type", "status"]),
             models.Index(fields=["document_date"]),
             models.Index(fields=["status", "created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["stored_filename"],
+                condition=~Q(pdf_file=""),
+                name="unique_non_empty_stored_filename",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -141,3 +167,29 @@ class DocumentCounter(models.Model):
     def __str__(self) -> str:
         period = self.year if self.year else "continu"
         return f"{self.company.code}-{self.document_type.prefix}-{period}"
+
+
+class DocumentFileCounter(models.Model):
+    """Tracks the global sequence used for stored PDF filenames."""
+
+    PDF_KEY = "pdf"
+    MAX_SEQUENCE = 99_999_999
+
+    key = models.CharField(
+        max_length=20,
+        primary_key=True,
+        default=PDF_KEY,
+        editable=False,
+    )
+    current_number = models.PositiveIntegerField(
+        default=0,
+        validators=[MaxValueValidator(MAX_SEQUENCE)],
+        verbose_name="current number",
+    )
+
+    class Meta:
+        verbose_name = "document file counter"
+        verbose_name_plural = "document file counters"
+
+    def __str__(self) -> str:
+        return f"{self.key}: {self.current_number:08d}"

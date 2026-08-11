@@ -9,6 +9,11 @@ urlpatterns = [
     path("new/", views.DocumentCreateView.as_view(), name="create"),
     path("<int:pk>/edit/", views.DocumentUpdateView.as_view(), name="update"),
     path(
+        "<int:pk>/file/",
+        views.DocumentDownloadView.as_view(),
+        name="download",
+    ),
+    path(
         "<int:pk>/archive/",
         views.DocumentArchiveView.as_view(),
         name="archive",

@@ -85,6 +85,17 @@
                         <td><strong>{{ document.number }}</strong></td>
                         <td>
                             <div class="fw-semibold">{{ document.title }}</div>
+                            {% if document.pdf_file %}
+                                <div class="small">
+                                    <a
+                                        href="{% url 'documents:download' document.pk %}"
+                                        target="_blank"
+                                        rel="noopener"
+                                    >
+                                        {{ document.stored_filename }}
+                                    </a>
+                                </div>
+                            {% endif %}
                             {% if document.notes %}
                                 <div class="text-secondary small">
                                     {{ document.notes|truncatechars:80 }}
@@ -109,6 +120,16 @@
                         </td>
                         <td>
                             <div class="btn-list flex-nowrap">
+                                {% if document.pdf_file %}
+                                    <a
+                                        href="{% url 'documents:download' document.pk %}"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="btn btn-sm btn-outline-secondary"
+                                    >
+                                        PDF
+                                    </a>
+                                {% endif %}
                                 {% if can_change_documents %}
                                     <a
                                         href="{% url 'documents:update' document.pk %}"
@@ -128,7 +149,7 @@
                                         </button>
                                     </form>
                                 {% endif %}
-                                {% if not can_change_documents and not can_archive_documents %}
+                                {% if not document.pdf_file and not can_change_documents and not can_archive_documents %}
                                     <span class="text-secondary">—</span>
                                 {% endif %}
                             </div>
