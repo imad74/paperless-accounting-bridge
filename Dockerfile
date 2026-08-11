@@ -22,9 +22,10 @@ RUN mkdir -p /app/backend/staticfiles /app/backend/media \
 
 USER pab
 
-RUN DJANGO_DEBUG=True \
-    DJANGO_SECRET_KEY=development-only-build-key \
-    python backend/manage.py collectstatic --noinput
+RUN DJANGO_DEBUG=False \
+    DJANGO_SECRET_KEY=build-only-collectstatic-key-not-used-at-runtime-0123456789abcdef \
+    python backend/manage.py collectstatic --noinput \
+    && test -f /app/backend/staticfiles/staticfiles.json
 
 EXPOSE 8000
 

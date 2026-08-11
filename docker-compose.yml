@@ -45,7 +45,6 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - staticfiles_data:/app/backend/staticfiles
       - media_data:/app/backend/media
 
   scan-worker:
@@ -93,5 +92,4 @@ services:
 
 volumes:
   postgres_data:
-  staticfiles_data:
   media_data:
