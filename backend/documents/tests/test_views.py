@@ -14,7 +14,7 @@ from companies.models import Company
 from documents.forms import DocumentForm
 from documents.models import Document, DocumentType
 
-from .pdf_helpers import make_pdf_upload
+from .pdf_helpers import make_pdf_upload, pdf_page_contains_image
 
 
 class DocumentFormTests(TestCase):
@@ -375,10 +375,11 @@ class DocumentViewTests(TestCase):
         self.assertEqual(len(document.sha256), 64)
         with document.pdf_file.open("rb") as pdf_stream:
             stamped_pdf = PdfReader(pdf_stream)
-            self.assertIn(
+            self.assertNotIn(
                 "00000001.pdf",
                 stamped_pdf.pages[0].extract_text(),
             )
+            self.assertTrue(pdf_page_contains_image(stamped_pdf.pages[0]))
         self.assertContains(response, "00000001.pdf")
 
     def test_duplicate_pdf_is_rejected_without_creating_a_second_document(self):
@@ -421,6 +422,8 @@ class DocumentViewTests(TestCase):
         allowed_response = self.client.get(
             reverse("documents:download", args=[document.pk])
         )
+        for resource_closer in allowed_response._resource_closers:
+            self.addCleanup(resource_closer)
 
         CompanyMembership.objects.create(
             user=self.users[CompanyMembership.Role.ADMIN],

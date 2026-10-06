@@ -14,7 +14,11 @@ Chaque document créé depuis l’interface reçoit deux identifiants distincts 
 - un nom de fichier technique global constitué de huit chiffres, par exemple
   `00000001.pdf`.
 
-Le nom technique est imprimé en haut à droite de chaque page du PDF scanné.
+Le numéro technique, sans l’extension `.pdf` (par exemple `00000001`), est
+imprimé sous forme d’image en haut à droite de chaque page du PDF scanné. Le
+fichier conserve son nom complet `00000001.pdf`. Ce tampon raster reste
+visible sans ajouter une couche de texte qui pourrait empêcher Paperless-ngx
+de lancer l’OCR du scan.
 
 ## Règles fonctionnelles
 

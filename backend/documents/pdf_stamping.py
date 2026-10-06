@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 
+from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader, PdfWriter
 from pypdf.errors import PdfReadError
-from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 
@@ -30,14 +31,14 @@ class ProcessedPdf:
 
 
 class PdfStampingService:
-    """Validate a scanned PDF and print its stored filename on every page."""
+    """Validate a scanned PDF and raster-stamp its filename on every page."""
 
-    FONT_NAME = "Helvetica-Bold"
     FONT_SIZE = 9
     RIGHT_MARGIN = 18
     TOP_MARGIN = 18
     HORIZONTAL_PADDING = 4
     VERTICAL_PADDING = 3
+    RASTER_SCALE = 4
 
     @classmethod
     def prepare(
@@ -148,6 +149,9 @@ class PdfStampingService:
         height: float,
         stored_filename: str,
     ) -> BytesIO:
+        stamp_image, stamp_width, stamp_height = cls._build_stamp_image(
+            cls._stamp_label(stored_filename),
+        )
         overlay = BytesIO()
         pdf_canvas = canvas.Canvas(
             overlay,
@@ -155,36 +159,64 @@ class PdfStampingService:
             pageCompression=1,
             invariant=1,
         )
-        text_width = stringWidth(
-            stored_filename,
-            cls.FONT_NAME,
-            cls.FONT_SIZE,
-        )
-        text_x = width - cls.RIGHT_MARGIN
-        text_y = height - cls.TOP_MARGIN - cls.FONT_SIZE
-        background_x = (
-            text_x - text_width - (2 * cls.HORIZONTAL_PADDING)
-        )
-        background_y = text_y - cls.VERTICAL_PADDING
-        background_width = text_width + (2 * cls.HORIZONTAL_PADDING)
-        background_height = cls.FONT_SIZE + (2 * cls.VERTICAL_PADDING)
-
-        pdf_canvas.setFillColorRGB(1, 1, 1)
-        pdf_canvas.rect(
-            background_x,
-            background_y,
-            background_width,
-            background_height,
-            stroke=0,
-            fill=1,
-        )
-        pdf_canvas.setFillColorRGB(0, 0, 0)
-        pdf_canvas.setFont(cls.FONT_NAME, cls.FONT_SIZE)
-        pdf_canvas.drawRightString(
-            text_x - cls.HORIZONTAL_PADDING,
-            text_y,
-            stored_filename,
+        pdf_canvas.drawImage(
+            ImageReader(stamp_image),
+            width - cls.RIGHT_MARGIN - stamp_width,
+            height - cls.TOP_MARGIN - stamp_height,
+            width=stamp_width,
+            height=stamp_height,
+            preserveAspectRatio=True,
+            mask=None,
         )
         pdf_canvas.save()
         overlay.seek(0)
         return overlay
+
+    @staticmethod
+    def _stamp_label(stored_filename: str) -> str:
+        if stored_filename.lower().endswith(".pdf"):
+            return stored_filename[:-4]
+        return stored_filename
+
+    @classmethod
+    def _build_stamp_image(
+        cls,
+        stamp_label: str,
+    ) -> tuple[BytesIO, float, float]:
+        scale = cls.RASTER_SCALE
+        font = ImageFont.load_default(size=cls.FONT_SIZE * scale)
+        measurement_image = Image.new("RGB", (1, 1), "white")
+        measurement_draw = ImageDraw.Draw(measurement_image)
+        text_box = measurement_draw.textbbox(
+            (0, 0),
+            stamp_label,
+            font=font,
+        )
+        horizontal_padding = cls.HORIZONTAL_PADDING * scale
+        vertical_padding = cls.VERTICAL_PADDING * scale
+        image_width = (
+            text_box[2] - text_box[0] + (2 * horizontal_padding)
+        )
+        image_height = (
+            text_box[3] - text_box[1] + (2 * vertical_padding)
+        )
+        image = Image.new(
+            "RGB",
+            (image_width, image_height),
+            "white",
+        )
+        draw = ImageDraw.Draw(image)
+        draw.text(
+            (
+                horizontal_padding - text_box[0],
+                vertical_padding - text_box[1],
+            ),
+            stamp_label,
+            font=font,
+            fill="black",
+        )
+
+        output = BytesIO()
+        image.save(output, format="PNG", optimize=True)
+        output.seek(0)
+        return output, image_width / scale, image_height / scale
