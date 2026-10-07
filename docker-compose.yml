@@ -25,6 +25,8 @@ services:
         PAB_UID: ${PAB_UID:-999}
         PAB_GID: ${PAB_GID:-999}
     init: true
+    healthcheck:
+      disable: true
     env_file:
       - path: .env
         required: false
