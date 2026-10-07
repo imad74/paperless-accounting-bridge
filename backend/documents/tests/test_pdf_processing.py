@@ -21,7 +21,7 @@ from documents.pdf_processing import (
     PdfStampingService,
 )
 
-from .pdf_helpers import make_pdf_upload
+from .pdf_helpers import make_pdf_upload, pdf_page_contains_image
 
 
 class TemporaryMediaRootMixin:
@@ -39,7 +39,17 @@ class TemporaryMediaRootMixin:
 
 
 class PdfStampingServiceTests(TestCase):
-    def test_filename_is_printed_on_every_page(self):
+    def test_stamp_label_omits_pdf_extension(self):
+        self.assertEqual(
+            PdfStampingService._stamp_label("00000001.pdf"),
+            "00000001",
+        )
+        self.assertEqual(
+            PdfStampingService._stamp_label("00000001.PDF"),
+            "00000001",
+        )
+
+    def test_filename_is_raster_stamped_on_every_page(self):
         processed_pdf = PdfStampingService.process(
             make_pdf_upload(page_count=2),
             "00000001.pdf",
@@ -50,7 +60,10 @@ class PdfStampingServiceTests(TestCase):
         self.assertEqual(len(processed_pdf.source_sha256), 64)
         self.assertEqual(len(reader.pages), 2)
         for page in reader.pages:
-            self.assertIn("00000001.pdf", page.extract_text())
+            extracted_text = page.extract_text()
+            self.assertIn("Document de test", extracted_text)
+            self.assertNotIn("00000001.pdf", extracted_text)
+            self.assertTrue(pdf_page_contains_image(page))
 
     def test_invalid_pdf_is_rejected(self):
         invalid_pdf = SimpleUploadedFile(
@@ -87,7 +100,8 @@ class PdfStampingServiceTests(TestCase):
 
         output_page = PdfReader(BytesIO(processed_pdf.content)).pages[0]
         self.assertEqual(output_page.rotation, 0)
-        self.assertIn("00000001.pdf", output_page.extract_text())
+        self.assertNotIn("00000001.pdf", output_page.extract_text())
+        self.assertTrue(pdf_page_contains_image(output_page))
 
 
 class PdfFilenameServiceTests(TemporaryMediaRootMixin, TestCase):

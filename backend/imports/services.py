@@ -164,6 +164,9 @@ class ScanFolderImporter:
         for candidate in sorted(self.input_directory.iterdir()):
             if not candidate.is_file() or candidate.suffix.lower() != ".pdf":
                 continue
+            if self.stability_seconds == 0:
+                ready_files.append(candidate)
+                continue
             try:
                 file_age = current_time - candidate.stat().st_mtime
             except FileNotFoundError:

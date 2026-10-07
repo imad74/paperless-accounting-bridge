@@ -10,7 +10,10 @@ from pypdf import PdfReader
 
 from companies.models import Company
 from documents.models import Document, DocumentType
-from documents.tests.pdf_helpers import make_pdf_upload
+from documents.tests.pdf_helpers import (
+    make_pdf_upload,
+    pdf_page_contains_image,
+)
 from imports.models import ImportJob, PaperlessOutbox
 from imports.services import ScanConfigurationError, ScanFolderImporter
 
@@ -72,10 +75,11 @@ class ScanFolderImporterTests(TestCase):
         paperless_pdf = self.paperless_directory / "00000001.pdf"
         self.assertTrue(paperless_pdf.exists())
         stamped_reader = PdfReader(BytesIO(paperless_pdf.read_bytes()))
-        self.assertIn(
+        self.assertNotIn(
             "00000001.pdf",
             stamped_reader.pages[0].extract_text(),
         )
+        self.assertTrue(pdf_page_contains_image(stamped_reader.pages[0]))
         outbox = PaperlessOutbox.objects.get(document=document)
         self.assertIsNotNone(outbox.delivered_at)
         self.assertEqual(outbox.attempt_count, 1)
@@ -134,6 +138,15 @@ class ScanFolderImporterTests(TestCase):
         self.assertTrue(source_path.exists())
         self.assertEqual(Document.objects.count(), 0)
         self.assertEqual(ImportJob.objects.count(), 0)
+
+    @patch("imports.services.time.time", return_value=0)
+    def test_zero_stability_processes_file_despite_clock_skew(self, _time):
+        self.write_scan()
+
+        results = self.importer.process_ready_files()
+
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0].success, results[0].message)
 
     def test_ambiguous_company_configuration_leaves_scan_untouched(self):
         Company.objects.create(code="OTHER", name="Autre société")
