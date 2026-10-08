@@ -20,6 +20,10 @@ fichier conserve son nom complet `00000001.pdf`. Ce tampon raster reste
 visible sans ajouter une couche de texte qui pourrait empêcher Paperless-ngx
 de lancer l’OCR du scan.
 
+Le service `scan-worker` désactive le contrôle HTTP hérité de l’image web. Son
+processus de surveillance reste le processus principal du conteneur : si ce
+processus s’arrête, Docker applique directement sa politique de redémarrage.
+
 ## Règles fonctionnelles
 
 1. seuls les fichiers PDF sont acceptés ;
