@@ -9,7 +9,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views import View
-from django.views.generic import CreateView, ListView, UpdateView
+from django.views.generic import CreateView, FormView, ListView, UpdateView
 from django.views.generic.detail import SingleObjectMixin
 
 from accounts.mixins import (
@@ -18,8 +18,14 @@ from accounts.mixins import (
 )
 from accounts.permissions import CompanyPermission, role_has_permission
 
-from .forms import DocumentFilterForm, DocumentForm, DocumentTypeForm
+from .forms import (
+    DocumentFilterForm,
+    DocumentForm,
+    DocumentTypeForm,
+    PaperlessExactSearchForm,
+)
 from .models import Document, DocumentType
+from .paperless_api import PaperlessApiClient, PaperlessApiError
 from .pdf_processing import (
     DuplicatePdfError,
     PdfFilenameService,
@@ -86,6 +92,40 @@ class DocumentListView(
         query_parameters.pop("page", None)
         context["pagination_query"] = query_parameters.urlencode()
         return context
+
+
+class PaperlessExactSearchView(
+    CompanyPermissionRequiredMixin,
+    FormView,
+):
+    template_name = "documents/paperless_exact_search.html"
+    form_class = PaperlessExactSearchForm
+    required_company_permission = CompanyPermission.VIEW_DOCUMENTS
+    http_method_names = ("get", "post", "head", "options")
+
+    def form_valid(self, form):
+        try:
+            search_groups = PaperlessApiClient().search_exact_names(
+                form.cleaned_data["names"]
+            )
+        except PaperlessApiError as error:
+            form.add_error(None, str(error))
+            return self.form_invalid(form)
+
+        match_count = sum(
+            len(group.documents) for group in search_groups
+        )
+        missing_names = [
+            group.name for group in search_groups if not group.documents
+        ]
+        context = self.get_context_data(
+            form=form,
+            search_performed=True,
+            search_groups=search_groups,
+            match_count=match_count,
+            missing_names=missing_names,
+        )
+        return self.render_to_response(context)
 
 
 class DocumentCreateView(CompanyPermissionRequiredMixin, CreateView):

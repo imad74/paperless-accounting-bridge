@@ -11,13 +11,21 @@
                 Consultez les documents de {{ active_company.name }}.
             </div>
         </div>
-        {% if can_change_documents %}
-            <div class="col-auto ms-auto">
+        <div class="col-auto ms-auto">
+            <div class="btn-list">
+                <a
+                    href="{% url 'documents:paperless_search' %}"
+                    class="btn btn-outline-primary"
+                >
+                    Recherche exacte Paperless
+                </a>
+                {% if can_change_documents %}
                 <a href="{% url 'documents:create' %}" class="btn btn-primary">
                     Nouveau document
                 </a>
+                {% endif %}
             </div>
-        {% endif %}
+        </div>
     </div>
 </div>
 

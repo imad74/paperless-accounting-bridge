@@ -1,9 +1,10 @@
 from datetime import date
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.test import override_settings
 from django.urls import reverse
 from pypdf import PdfReader
@@ -11,8 +12,13 @@ from pypdf import PdfReader
 from accounts.models import CompanyMembership
 from accounts.services import ACTIVE_COMPANY_SESSION_KEY
 from companies.models import Company
-from documents.forms import DocumentForm
+from documents.forms import DocumentForm, PaperlessExactSearchForm
 from documents.models import Document, DocumentType
+from documents.paperless_api import (
+    PaperlessApiError,
+    PaperlessDocument,
+    PaperlessSearchGroup,
+)
 
 from .pdf_helpers import make_pdf_upload, pdf_page_contains_image
 
@@ -72,6 +78,44 @@ class DocumentFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("pdf_file", form.errors)
+
+
+class PaperlessExactSearchFormTests(SimpleTestCase):
+    def test_names_are_normalized_and_deduplicated(self):
+        form = PaperlessExactSearchForm(
+            data={
+                "names": (
+                    ' "21-10-2023 CA.pdf" \n'
+                    "C:\\Scans\\42-3-2023 CA.PDF\n"
+                    "21-10-2023 ca\n"
+                    "/tmp/43-3-2023 CA.pdf"
+                )
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.cleaned_data["names"],
+            ["21-10-2023 CA", "42-3-2023 CA", "43-3-2023 CA"],
+        )
+
+    def test_at_least_one_name_is_required(self):
+        form = PaperlessExactSearchForm(data={"names": "\n  \n"})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("names", form.errors)
+
+    def test_number_of_names_is_limited(self):
+        names = "\n".join(
+            f"document-{index}" for index in range(101)
+        )
+        form = PaperlessExactSearchForm(data={"names": names})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Limitez la recherche à 100 noms à la fois.",
+            form.errors.as_text(),
+        )
 
 
 class DocumentViewTests(TestCase):
@@ -189,6 +233,10 @@ class DocumentViewTests(TestCase):
 
     def test_documents_are_mounted_in_the_main_routing(self):
         self.assertEqual(reverse("documents:list"), "/documents/")
+        self.assertEqual(
+            reverse("documents:paperless_search"),
+            "/documents/paperless-search/",
+        )
         self.assertEqual(reverse("documents:create"), "/documents/new/")
         self.assertEqual(
             reverse("documents:download", args=[self.document.pk]),
@@ -269,6 +317,75 @@ class DocumentViewTests(TestCase):
         self.assertNotContains(status_response, self.document.number)
         self.assertContains(period_response, self.document.number)
         self.assertNotContains(period_response, self.credit_document.number)
+
+    def test_viewer_can_open_exact_paperless_search(self):
+        self.login_with_company(CompanyMembership.Role.VIEWER)
+
+        response = self.client.get(reverse("documents:paperless_search"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recherche exacte Paperless")
+
+    @patch("documents.views.PaperlessApiClient")
+    def test_exact_paperless_search_displays_matches_and_missing_names(
+        self,
+        client_class,
+    ):
+        client_class.return_value.search_exact_names.return_value = (
+            PaperlessSearchGroup(
+                name="21-10-2023 CA",
+                documents=(
+                    PaperlessDocument(
+                        id=120,
+                        title="21-10-2023 CA",
+                        original_filename="21-10-2023 CA.pdf",
+                        created="2023-10-21",
+                        page_count=2,
+                        web_url=(
+                            "https://archive.example.com/"
+                            "documents/120/details"
+                        ),
+                    ),
+                ),
+            ),
+            PaperlessSearchGroup(name="nom-absent", documents=()),
+        )
+        self.login_with_company(CompanyMembership.Role.VIEWER)
+
+        response = self.client.post(
+            reverse("documents:paperless_search"),
+            {"names": "21-10-2023 CA.pdf\nnom-absent"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "21-10-2023 CA.pdf")
+        self.assertContains(response, "nom-absent")
+        self.assertContains(response, "Noms absents de Paperless")
+        self.assertContains(
+            response,
+            "https://archive.example.com/documents/120/details",
+        )
+        client_class.return_value.search_exact_names.assert_called_once_with(
+            ["21-10-2023 CA", "nom-absent"]
+        )
+
+    @patch("documents.views.PaperlessApiClient")
+    def test_exact_paperless_search_displays_api_errors(self, client_class):
+        client_class.return_value.search_exact_names.side_effect = (
+            PaperlessApiError("Paperless est temporairement inaccessible.")
+        )
+        self.login_with_company(CompanyMembership.Role.VIEWER)
+
+        response = self.client.post(
+            reverse("documents:paperless_search"),
+            {"names": "21-10-2023 CA"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Paperless est temporairement inaccessible.",
+        )
 
     def test_invalid_period_displays_an_error_without_failing(self):
         self.login_with_company(CompanyMembership.Role.VIEWER)
@@ -580,9 +697,14 @@ class DocumentViewTests(TestCase):
         archive_response = csrf_client.post(
             reverse("documents:archive", args=[self.document.pk])
         )
+        paperless_search_response = csrf_client.post(
+            reverse("documents:paperless_search"),
+            {"names": "21-10-2023 CA"},
+        )
 
         self.assertEqual(create_response.status_code, 403)
         self.assertEqual(archive_response.status_code, 403)
+        self.assertEqual(paperless_search_response.status_code, 403)
         self.assertFalse(Document.objects.filter(title="Nouvel achat").exists())
 
     def test_navigation_and_actions_follow_the_active_role(self):

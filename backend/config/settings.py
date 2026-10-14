@@ -168,6 +168,9 @@ DOCUMENT_PDF_MAX_BYTES = env_int(
     "DOCUMENT_PDF_MAX_BYTES",
     25 * 1024 * 1024,
 )
+PAPERLESS_API_URL = os.getenv("PAPERLESS_API_URL", "").strip().rstrip("/")
+PAPERLESS_API_TOKEN = os.getenv("PAPERLESS_API_TOKEN", "").strip()
+PAPERLESS_API_TIMEOUT = env_int("PAPERLESS_API_TIMEOUT", 15)
 SCAN_INPUT_DIRECTORY = Path(
     os.getenv("SCAN_INPUT_DIRECTORY", "/scan/incoming")
 )

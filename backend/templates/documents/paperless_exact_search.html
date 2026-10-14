@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Recherche exacte Paperless{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Recherche exacte Paperless</h2>
+            <div class="text-secondary">
+                Recherchez plusieurs titres ou noms de fichiers sans résultat approchant.
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a href="{% url 'documents:list' %}" class="btn btn-outline-secondary">
+                Retour aux documents PAB
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+
+            {% for error in form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">{{ error }}</div>
+            {% endfor %}
+
+            <label class="form-label" for="{{ form.names.id_for_label }}">
+                {{ form.names.label }}
+            </label>
+            {{ form.names }}
+            <div class="form-hint">{{ form.names.help_text }}</div>
+            {% for error in form.names.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary mt-3">
+                Rechercher dans Paperless
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if search_performed %}
+    <div class="row row-cards mb-4">
+        <div class="col-sm-6 col-lg-4">
+            <div class="card card-sm">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <div class="font-weight-medium">{{ search_groups|length }} noms recherchés</div>
+                            <div class="text-secondary">{{ match_count }} document{{ match_count|pluralize }} trouvé{{ match_count|pluralize }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if missing_names %}
+        <div class="alert alert-warning" role="alert">
+            <div class="fw-semibold mb-1">Noms absents de Paperless</div>
+            <ul class="mb-0">
+                {% for name in missing_names %}
+                    <li>{{ name }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-vcenter table-hover card-table">
+                <thead>
+                    <tr>
+                        <th>Nom recherché</th>
+                        <th>Titre Paperless</th>
+                        <th>Fichier d’origine</th>
+                        <th>Date</th>
+                        <th>Pages</th>
+                        <th class="w-1">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in search_groups %}
+                        {% for document in group.documents %}
+                            <tr>
+                                <td><strong>{{ group.name }}</strong></td>
+                                <td>{{ document.title }}</td>
+                                <td>{{ document.original_filename|default:"—" }}</td>
+                                <td>{{ document.created|default:"—" }}</td>
+                                <td>{{ document.page_count|default_if_none:"—" }}</td>
+                                <td>
+                                    <a
+                                        href="{{ document.web_url }}"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Ouvrir
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td><strong>{{ group.name }}</strong></td>
+                                <td colspan="5" class="text-secondary">
+                                    Aucun document exact.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
