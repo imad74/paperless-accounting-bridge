@@ -1,88 +1,104 @@
-<aside class="navbar navbar-vertical navbar-expand-lg navbar-dark">
+<aside
+    class="navbar navbar-vertical navbar-expand-md navbar-dark bg-dark"
+    data-bs-theme="dark"
+    aria-label="Navigation principale"
+>
     <div class="container-fluid">
+        <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#sidebar-menu"
+            aria-controls="sidebar-menu"
+            aria-expanded="false"
+            aria-label="Afficher ou masquer la navigation"
+        >
+            <span class="navbar-toggler-icon"></span>
+        </button>
 
-        <h1 class="navbar-brand text-white mt-3 mb-4">
-            PAB
+        <h1 class="navbar-brand navbar-brand-autodark">
+            <a href="{% url 'home' %}" class="text-white text-decoration-none">
+                PAB
+            </a>
         </h1>
 
-        <div class="navbar-nav">
+        <div class="collapse navbar-collapse" id="sidebar-menu">
+            <ul class="navbar-nav pt-md-3">
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}"
+                        href="{% url 'home' %}"
+                    >
+                        <span class="nav-link-icon" aria-hidden="true">🏠</span>
+                        <span class="nav-link-title">Tableau de bord</span>
+                    </a>
+                </li>
 
-            <div class="nav-item">
-                <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}"
-                   href="{% url 'home' %}">
-                    <span class="nav-link-title">
-                        🏠 Tableau de bord
-                    </span>
-                </a>
-            </div>
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if request.resolver_match.namespace == 'companies' %}active{% endif %}"
+                        href="{% url 'companies:list' %}"
+                    >
+                        <span class="nav-link-icon" aria-hidden="true">🏢</span>
+                        <span class="nav-link-title">Sociétés</span>
+                    </a>
+                </li>
 
-            <div class="nav-item">
-                <a class="nav-link {% if request.resolver_match.namespace == 'companies' %}active{% endif %}"
-                   href="{% url 'companies:list' %}">
-                    <span class="nav-link-title">
-                        🏢 Sociétés
-                    </span>
-                </a>
-            </div>
+                {% if active_company_membership.role == "ADMIN" %}
+                    <li class="nav-item">
+                        <a
+                            class="nav-link {% if request.resolver_match.namespace == 'accounts' and request.resolver_match.url_name != 'company_select' %}active{% endif %}"
+                            href="{% url 'accounts:membership_list' %}"
+                        >
+                            <span class="nav-link-icon" aria-hidden="true">👥</span>
+                            <span class="nav-link-title">Membres</span>
+                        </a>
+                    </li>
+                {% endif %}
 
-            {% if active_company_membership.role == "ADMIN" %}
-            <div class="nav-item">
-                <a class="nav-link {% if request.resolver_match.namespace == 'accounts' and request.resolver_match.url_name != 'company_select' %}active{% endif %}"
-                   href="{% url 'accounts:membership_list' %}">
-                    <span class="nav-link-title">
-                        👥 Membres
-                    </span>
-                </a>
-            </div>
-            {% endif %}
+                {% if active_company_membership %}
+                    <li class="nav-item">
+                        <a
+                            class="nav-link {% if request.resolver_match.namespace == 'document_types' %}active{% endif %}"
+                            href="{% url 'document_types:list' %}"
+                        >
+                            <span class="nav-link-icon" aria-hidden="true">🗂️</span>
+                            <span class="nav-link-title">Types documentaires</span>
+                        </a>
+                    </li>
 
-            {% if active_company_membership %}
-            <div class="nav-item">
-                <a class="nav-link {% if request.resolver_match.namespace == 'document_types' %}active{% endif %}"
-                   href="{% url 'document_types:list' %}">
-                    <span class="nav-link-title">
-                        🗂️ Types documentaires
-                    </span>
-                </a>
-            </div>
-            {% endif %}
+                    <li class="nav-item">
+                        <a
+                            class="nav-link {% if request.resolver_match.namespace == 'documents' %}active{% endif %}"
+                            href="{% url 'documents:list' %}"
+                        >
+                            <span class="nav-link-icon" aria-hidden="true">📄</span>
+                            <span class="nav-link-title">Documents</span>
+                        </a>
+                    </li>
+                {% endif %}
 
-            {% if active_company_membership %}
-            <div class="nav-item">
-                <a class="nav-link {% if request.resolver_match.namespace == 'documents' %}active{% endif %}"
-                   href="{% url 'documents:list' %}">
-                    <span class="nav-link-title">
-                        📄 Documents
-                    </span>
-                </a>
-            </div>
-            {% endif %}
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <span class="nav-link-icon" aria-hidden="true">📥</span>
+                        <span class="nav-link-title">Imports</span>
+                    </a>
+                </li>
 
-            <div class="nav-item">
-                <a class="nav-link" href="#">
-                    <span class="nav-link-title">
-                        📥 Imports
-                    </span>
-                </a>
-            </div>
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <span class="nav-link-icon" aria-hidden="true">📊</span>
+                        <span class="nav-link-title">Rapports</span>
+                    </a>
+                </li>
 
-            <div class="nav-item">
-                <a class="nav-link" href="#">
-                    <span class="nav-link-title">
-                        📊 Rapports
-                    </span>
-                </a>
-            </div>
-
-            <div class="nav-item">
-                <a class="nav-link" href="#">
-                    <span class="nav-link-title">
-                        ⚙️ Paramètres
-                    </span>
-                </a>
-            </div>
-
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <span class="nav-link-icon" aria-hidden="true">⚙️</span>
+                        <span class="nav-link-title">Paramètres</span>
+                    </a>
+                </li>
+            </ul>
         </div>
-
     </div>
 </aside>

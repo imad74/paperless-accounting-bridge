@@ -37,6 +37,13 @@ ne possèdent pas nécessairement de fiche locale dans PAB. Le jeton API reste
 strictement côté serveur et les résultats sont limités par les permissions du
 compte Paperless auquel appartient ce jeton.
 
+## Navigation responsive
+
+Le menu principal utilise désormais la structure responsive complète de
+Tabler. Sur les fenêtres étroites, il se replie derrière un bouton de
+navigation au lieu de pousser le contenu sous l’écran. Son fond sombre et ses
+libellés restent lisibles quelle que soit la largeur de la fenêtre.
+
 ## Règles fonctionnelles
 
 1. seuls les fichiers PDF sont acceptés ;
