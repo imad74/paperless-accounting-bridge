@@ -45,6 +45,21 @@ L’import automatique des scans est fourni par le profil Docker optionnel
 supprimé tout flux direct concurrent entre ces deux étapes. Consultez
 [`docs/releases/RELEASE-004.md`](docs/releases/RELEASE-004.md).
 
+La page **Recherche exacte Paperless** accepte jusqu’à 100 titres ou noms de
+fichiers, un par ligne. Elle interroge les filtres exacts de l’API Paperless et
+affiche séparément les correspondances, les doublons exacts et les noms
+absents. Configurez un jeton API Paperless en dehors du dépôt :
+
+```dotenv
+PAPERLESS_API_URL=https://archive.example.com
+PAPERLESS_API_TOKEN=replace-with-a-paperless-token
+PAPERLESS_API_TIMEOUT=15
+```
+
+Le jeton reste côté serveur et ne doit jamais être commité. Utilisez de
+préférence le jeton d’un compte Paperless dédié disposant uniquement des
+droits de lecture nécessaires.
+
 Docker Compose charge automatiquement `docker-compose.override.yml` en
 développement afin de monter le code et d’utiliser `runserver`. Le déploiement
 doit charger uniquement `docker-compose.yml`, qui conserve la commande Gunicorn

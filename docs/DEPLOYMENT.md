@@ -43,6 +43,9 @@ DJANGO_SECRET_KEY=<valeur-aléatoire-d-au-moins-50-caractères>
 DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=pab.example.com
 DJANGO_CSRF_TRUSTED_ORIGINS=https://pab.example.com
+PAPERLESS_API_URL=https://archive.example.com
+PAPERLESS_API_TOKEN=<jeton-d-un-compte-paperless-en-lecture>
+PAPERLESS_API_TIMEOUT=15
 DB_NAME=paperless
 DB_USER=paperless
 DB_PASSWORD=<mot-de-passe-unique>
@@ -58,6 +61,12 @@ DJANGO_TRUST_PROXY_HEADERS=True
 SCAN_INPUT_HOST_PATH=/opt/pab/incoming
 PAPERLESS_CONSUME_HOST_PATH=/opt/paperless/consume
 ```
+
+`PAPERLESS_API_TOKEN` permet la recherche exacte de plusieurs titres ou noms
+de fichiers dans l’ensemble des documents visibles par le compte Paperless
+associé. Créez de préférence un compte Paperless dédié en lecture seule. Le
+jeton n’est jamais envoyé au navigateur et doit rester uniquement dans le
+fichier `.env` protégé ou dans le gestionnaire de secrets.
 
 Le worker de scan est isolé dans le profil `scan-import` et reste arrêté par
 défaut. Sur le VPS OVH actuel, Paperless occupe déjà le port public `8000` ;

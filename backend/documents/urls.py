@@ -6,6 +6,11 @@ app_name = "documents"
 
 urlpatterns = [
     path("", views.DocumentListView.as_view(), name="list"),
+    path(
+        "paperless-search/",
+        views.PaperlessExactSearchView.as_view(),
+        name="paperless_search",
+    ),
     path("new/", views.DocumentCreateView.as_view(), name="create"),
     path("<int:pk>/edit/", views.DocumentUpdateView.as_view(), name="update"),
     path(

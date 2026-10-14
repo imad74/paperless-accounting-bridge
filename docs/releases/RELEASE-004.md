@@ -24,6 +24,19 @@ Le service `scan-worker` désactive le contrôle HTTP hérité de l’image web.
 processus de surveillance reste le processus principal du conteneur : si ce
 processus s’arrête, Docker applique directement sa politique de redémarrage.
 
+## Recherche exacte dans Paperless
+
+La liste des documents PAB donne accès à une page de recherche exacte dans
+Paperless-ngx. Elle accepte jusqu’à 100 titres ou noms de fichiers, un par
+ligne, et utilise les filtres API `title__iexact` et
+`original_filename__iexact`. L’extension `.pdf` est facultative, les doublons
+de saisie sont retirés et les noms absents restent visibles dans le résultat.
+
+Cette recherche inclut les documents importés directement dans Paperless, qui
+ne possèdent pas nécessairement de fiche locale dans PAB. Le jeton API reste
+strictement côté serveur et les résultats sont limités par les permissions du
+compte Paperless auquel appartient ce jeton.
+
 ## Règles fonctionnelles
 
 1. seuls les fichiers PDF sont acceptés ;

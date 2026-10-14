@@ -143,6 +143,58 @@ class DocumentFilterForm(forms.Form):
         )
 
 
+class PaperlessExactSearchForm(forms.Form):
+    MAX_NAMES = 100
+
+    names = forms.CharField(
+        label="Noms de fichiers ou titres exacts",
+        help_text=(
+            "Saisissez un nom par ligne. L’extension .pdf est facultative."
+        ),
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control font-monospace",
+                "rows": 10,
+                "placeholder": (
+                    "21-10-2023 CA\n"
+                    "42-3-2023 CA.pdf\n"
+                    "43-3-2023 CA"
+                ),
+            }
+        ),
+    )
+
+    def clean_names(self):
+        value = self.cleaned_data["names"]
+        names = []
+        seen = set()
+
+        for raw_line in value.splitlines():
+            name = raw_line.strip().strip('"').strip("'")
+            name = name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].strip()
+            if name.casefold().endswith(".pdf"):
+                name = name[:-4].strip()
+            if not name:
+                continue
+            if len(name) > 255:
+                raise ValidationError(
+                    "Chaque nom doit contenir au maximum 255 caractères."
+                )
+
+            normalized_name = name.casefold()
+            if normalized_name not in seen:
+                seen.add(normalized_name)
+                names.append(name)
+
+        if not names:
+            raise ValidationError("Saisissez au moins un nom de fichier.")
+        if len(names) > self.MAX_NAMES:
+            raise ValidationError(
+                f"Limitez la recherche à {self.MAX_NAMES} noms à la fois."
+            )
+        return names
+
+
 class DocumentTypeForm(forms.ModelForm):
     class Meta:
         model = DocumentType
