@@ -718,6 +718,13 @@ class DocumentViewTests(TestCase):
             viewer_response,
             f'href="{reverse("documents:list")}"',
         )
+        self.assertContains(
+            viewer_response,
+            'data-bs-target="#sidebar-menu"',
+        )
+        self.assertContains(viewer_response, 'id="sidebar-menu"')
+        self.assertContains(viewer_response, "navbar-expand-md")
+        self.assertContains(viewer_response, "bg-dark")
         self.assertNotContains(viewer_response, reverse("documents:create"))
         self.assertNotContains(
             viewer_response,
