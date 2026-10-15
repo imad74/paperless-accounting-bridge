@@ -9,7 +9,7 @@ from django.conf import settings
 
 
 class PaperlessApiError(Exception):
-    """Raised when Paperless cannot serve an exact-name search."""
+    """Raised when Paperless cannot serve a document lookup."""
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class PaperlessDocument:
     created: str
     page_count: int | None
     web_url: str
+    content: str = ""
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ class PaperlessSearchGroup:
 
 
 class PaperlessApiClient:
-    """Small read-only client for exact Paperless document lookups."""
+    """Small read-only client for Paperless document lookups."""
 
     PAGE_SIZE = 100
     MAX_PAGES = 100
@@ -74,6 +75,23 @@ class PaperlessApiClient:
         worker_count = min(self.MAX_WORKERS, len(names))
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             return tuple(executor.map(self._search_exact_name, names))
+
+    def get_document(self, document_id):
+        try:
+            document_id = int(document_id)
+        except (TypeError, ValueError) as error:
+            raise PaperlessApiError(
+                "L’identifiant du document Paperless est invalide."
+            ) from error
+        if document_id <= 0:
+            raise PaperlessApiError(
+                "L’identifiant du document Paperless est invalide."
+            )
+
+        payload = self._request_json(
+            f"{self.base_url}/api/documents/{document_id}/"
+        )
+        return self._deserialize_document(payload)
 
     def _search_exact_name(self, name):
         documents_by_id = {}
@@ -182,4 +200,5 @@ class PaperlessApiClient:
             created=str(item.get("created") or ""),
             page_count=page_count,
             web_url=f"{self.base_url}/documents/{document_id}/details",
+            content=str(item.get("content") or ""),
         )

@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     "dashboard.apps.DashboardConfig",
     "documents.apps.DocumentsConfig",
     "imports.apps.ImportsConfig",
+    "purchases.apps.PurchasesConfig",
 ]
 
 MIDDLEWARE = [

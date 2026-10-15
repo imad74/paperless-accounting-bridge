@@ -406,10 +406,12 @@ class DocumentTypeViewTests(TestCase):
             {"status": "inactive"},
         )
 
-        self.assertContains(search_response, self.active_type.name)
-        self.assertNotContains(search_response, self.inactive_type.name)
-        self.assertContains(inactive_response, self.inactive_type.name)
-        self.assertNotContains(inactive_response, self.active_type.name)
+        active_row_name = f'<div class="fw-semibold">{self.active_type.name}</div>'
+        inactive_row_name = f'<div class="fw-semibold">{self.inactive_type.name}</div>'
+        self.assertContains(search_response, active_row_name, html=True)
+        self.assertNotContains(search_response, inactive_row_name, html=True)
+        self.assertContains(inactive_response, inactive_row_name, html=True)
+        self.assertNotContains(inactive_response, active_row_name, html=True)
 
     def test_pagination_preserves_search_and_status_filters(self):
         for index in range(21):

@@ -94,11 +94,19 @@
                                 <td>{{ document.created|default:"—" }}</td>
                                 <td>{{ document.page_count|default_if_none:"—" }}</td>
                                 <td>
+                                    {% if can_import_purchase_invoice %}
+                                        <a
+                                            href="{% url 'purchases:import' %}?paperless_id={{ document.id }}"
+                                            class="btn btn-sm btn-outline-success"
+                                        >
+                                            Créer la facture
+                                        </a>
+                                    {% endif %}
                                     <a
                                         href="{{ document.web_url }}"
                                         target="_blank"
                                         rel="noopener"
-                                        class="btn btn-sm btn-outline-primary"
+                                        class="btn btn-sm btn-outline-primary mt-1"
                                     >
                                         Ouvrir
                                     </a>

@@ -9,6 +9,33 @@ from documents.paperless_api import PaperlessApiClient, PaperlessApiError
 
 
 class PaperlessApiClientTests(SimpleTestCase):
+    def test_single_document_includes_ocr_content(self):
+        def fake_urlopen(request, timeout):
+            payload = {
+                "id": 42,
+                "title": "Facture achat",
+                "original_filename": "facture.pdf",
+                "created": "2026-10-15",
+                "page_count": 3,
+                "content": "Texte OCR de la facture",
+            }
+            return BytesIO(json.dumps(payload).encode("utf-8"))
+
+        client = PaperlessApiClient(
+            base_url="https://archive.example.com",
+            token="secret-token",
+            urlopen_func=fake_urlopen,
+        )
+
+        document = client.get_document(42)
+
+        self.assertEqual(document.id, 42)
+        self.assertEqual(document.content, "Texte OCR de la facture")
+        self.assertEqual(
+            document.web_url,
+            "https://archive.example.com/documents/42/details",
+        )
+
     def test_exact_title_and_filename_matches_are_merged(self):
         requests = []
 

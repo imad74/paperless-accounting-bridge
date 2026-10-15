@@ -18,6 +18,7 @@ Paperless Accounting Bridge (PAB) est une application Django permettant de gére
 - Intégration avec Paperless via API
 - Tableau de bord
 - Workflow documentaire
+- Base structurée des factures d’achat et de leurs lignes
 
 ## Démarrage rapide
 
@@ -59,6 +60,13 @@ PAPERLESS_API_TIMEOUT=15
 Le jeton reste côté serveur et ne doit jamais être commité. Utilisez de
 préférence le jeton d’un compte Paperless dédié disposant uniquement des
 droits de lecture nécessaires.
+
+La rubrique **Factures d’achat** importe un document Paperless par son
+identifiant, conserve son texte OCR et propose les données d’en-tête, les
+totaux et les lignes d’articles ou de services. Chaque ligne doit être
+contrôlée. La validation comptable est bloquée tant que les lignes ne sont pas
+marquées comme vérifiées et que leurs totaux HT, TVA et TTC ne correspondent
+pas à la facture.
 
 Docker Compose charge automatiquement `docker-compose.override.yml` en
 développement afin de monter le code et d’utiliser `runserver`. Le déploiement

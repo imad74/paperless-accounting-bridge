@@ -325,6 +325,7 @@ class DocumentViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Recherche exacte Paperless")
+        self.assertNotContains(response, "Créer la facture")
 
     @patch("documents.views.PaperlessApiClient")
     def test_exact_paperless_search_displays_matches_and_missing_names(
@@ -368,6 +369,36 @@ class DocumentViewTests(TestCase):
         client_class.return_value.search_exact_names.assert_called_once_with(
             ["21-10-2023 CA", "nom-absent"]
         )
+
+    @patch("documents.views.PaperlessApiClient")
+    def test_operator_can_start_purchase_import_from_search_result(self, client_class):
+        client_class.return_value.search_exact_names.return_value = (
+            PaperlessSearchGroup(
+                name="Facture achat",
+                documents=(
+                    PaperlessDocument(
+                        id=7890,
+                        title="Facture achat",
+                        original_filename="Facture achat.pdf",
+                        created="2026-10-15",
+                        page_count=1,
+                        web_url="https://archive.example.com/documents/7890/details",
+                    ),
+                ),
+            ),
+        )
+        self.login_with_company(CompanyMembership.Role.OPERATOR)
+
+        response = self.client.post(
+            reverse("documents:paperless_search"),
+            {"names": "Facture achat"},
+        )
+
+        self.assertContains(
+            response,
+            f'{reverse("purchases:import")}?paperless_id=7890',
+        )
+        self.assertContains(response, "Créer la facture")
 
     @patch("documents.views.PaperlessApiClient")
     def test_exact_paperless_search_displays_api_errors(self, client_class):
