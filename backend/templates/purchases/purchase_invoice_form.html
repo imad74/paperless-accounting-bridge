@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Contrôle de la facture{% endblock %}
+
+{% block body %}
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Contrôle de la facture d’achat</h2>
+            <div class="text-secondary">
+                Paperless #{{ object.paperless_document_id }} — {{ object.paperless_title }}
+                {% if object.extraction_confidence %}— confiance {{ object.extraction_confidence }} %{% endif %}
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-list">
+                {% if object.paperless_document_id %}
+                    <a href="{{ paperless_url }}/documents/{{ object.paperless_document_id }}/details" target="_blank" rel="noopener" class="btn btn-outline-secondary">Voir le PDF</a>
+                {% endif %}
+                <a href="{% url 'purchases:list' %}" class="btn btn-link">Retour</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if object.status == "VALIDATED" %}
+    <div class="alert alert-success">Facture validée par {{ object.validated_by }} le {{ object.validated_at|date:"d/m/Y H:i" }}.</div>
+{% endif %}
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    <div class="card mb-4">
+        <div class="card-header"><h3 class="card-title">En-tête et totaux</h3></div>
+        <div class="card-body">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                {% for field in form %}
+                    <div class="{% if field.name == 'extraction_notes' %}col-12{% else %}col-lg-4 col-md-6{% endif %}">
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">Lignes d’articles et de services</h3>
+            <div class="card-actions">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-add-invoice-line>
+                    Ajouter une ligne
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {{ line_formset.management_form }}
+            {% if line_formset.non_form_errors %}<div class="alert alert-danger m-3">{{ line_formset.non_form_errors }}</div>{% endif %}
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table" id="invoice-lines" data-invoice-lines>
+                    <thead><tr><th>#</th><th>Référence / Désignation</th><th>Qté / Unité</th><th>PU HT</th><th>Remise</th><th>TVA</th><th>Total HT</th><th>TVA</th><th>TTC</th><th>Vérifiée</th><th></th></tr></thead>
+                    <tbody>
+                        {% for line_form in line_formset %}
+                            {% include "purchases/_purchase_invoice_line_row.html" with line_form=line_form only %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <template id="invoice-line-empty-form">
+                {% include "purchases/_purchase_invoice_line_row.html" with line_form=line_formset.empty_form only %}
+            </template>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end mb-4">
+        <button type="submit" class="btn btn-primary">Enregistrer les corrections</button>
+    </div>
+</form>
+
+{% if object.tax_summaries.exists %}
+    <div class="card mb-4">
+        <div class="card-header"><h3 class="card-title">Ventilation TVA calculée</h3></div>
+        <div class="table-responsive">
+            <table class="table card-table">
+                <thead><tr><th>Taux</th><th class="text-end">Base taxable</th><th class="text-end">TVA</th></tr></thead>
+                <tbody>
+                    {% for summary in object.tax_summaries.all %}
+                        <tr><td>{{ summary.tax_rate|floatformat:2 }} %</td><td class="text-end">{{ summary.taxable_amount|floatformat:2 }} {{ object.currency }}</td><td class="text-end">{{ summary.tax_amount|floatformat:2 }} {{ object.currency }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+
+{% if can_validate %}
+    <div class="card mb-4">
+        <div class="card-body d-flex align-items-center">
+            <div>
+                <div class="fw-semibold">Rapprochement comptable</div>
+                <div class="text-secondary">
+                    Lignes : HT {{ object.line_net_ht_total|floatformat:2 }}, TVA {{ object.line_tax_total|floatformat:2 }}, TTC {{ object.line_ttc_total|floatformat:2 }} {{ object.currency }}.
+                </div>
+            </div>
+            <form method="post" action="{% url 'purchases:validate' object.pk %}" class="ms-auto">
+                {% csrf_token %}
+                <button class="btn btn-success" {% if object.status == "VALIDATED" %}disabled{% endif %}>Valider la facture</button>
+            </form>
+        </div>
+    </div>
+{% endif %}
+
+<details class="card mb-4">
+    <summary class="card-header">Afficher le texte OCR source</summary>
+    <div class="card-body"><pre class="text-wrap mb-0">{{ object.raw_ocr_text }}</pre></div>
+</details>
+{% endblock %}

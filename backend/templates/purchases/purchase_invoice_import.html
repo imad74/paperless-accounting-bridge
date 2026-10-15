@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Importer une facture Paperless{% endblock %}
+
+{% block body %}
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Importer une facture depuis Paperless</h2>
+            <div class="text-secondary">L’OCR propose les champs et les lignes. Une validation humaine reste obligatoire.</div>
+        </div>
+        <div class="col-auto"><a href="{% url 'purchases:list' %}" class="btn btn-link">Retour</a></div>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <form method="post" class="card" novalidate>
+            {% csrf_token %}
+            <div class="card-body">
+                <label class="form-label" for="{{ form.paperless_document_id.id_for_label }}">{{ form.paperless_document_id.label }}</label>
+                {{ form.paperless_document_id }}
+                <div class="form-hint">{{ form.paperless_document_id.help_text }}</div>
+                {% for error in form.paperless_document_id.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="card-footer text-end"><button class="btn btn-primary">Analyser la facture</button></div>
+        </form>
+    </div>
+</div>
+{% endblock %}

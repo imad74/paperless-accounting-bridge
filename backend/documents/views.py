@@ -103,6 +103,14 @@ class PaperlessExactSearchView(
     required_company_permission = CompanyPermission.VIEW_DOCUMENTS
     http_method_names = ("get", "post", "head", "options")
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["can_import_purchase_invoice"] = role_has_permission(
+            self.active_company_membership.role,
+            CompanyPermission.CHANGE_DOCUMENTS,
+        )
+        return context
+
     def form_valid(self, form):
         try:
             search_groups = PaperlessApiClient().search_exact_names(

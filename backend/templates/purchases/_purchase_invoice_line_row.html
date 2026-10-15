@@ -1,0 +1,23 @@
+<tr data-invoice-line-row>
+    <td>{{ line_form.id }}{{ line_form.position }}</td>
+    <td>{{ line_form.reference }}<div class="mt-1">{{ line_form.description }}</div></td>
+    <td>{{ line_form.quantity }}<div class="mt-1">{{ line_form.unit }}</div></td>
+    <td>{{ line_form.unit_price_ht }}</td>
+    <td>{{ line_form.discount_percent }}</td>
+    <td>{{ line_form.tax_rate }}</td>
+    <td>{{ line_form.total_ht }}</td>
+    <td>{{ line_form.tax_amount }}</td>
+    <td>{{ line_form.total_ttc }}</td>
+    <td class="text-center">{{ line_form.verified }}</td>
+    <td>
+        <span class="d-none">{{ line_form.DELETE }}</span>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-invoice-line>
+            Supprimer
+        </button>
+    </td>
+</tr>
+{% if line_form.errors %}
+    <tr data-invoice-line-errors>
+        <td colspan="11" class="text-danger small">{{ line_form.errors }}</td>
+    </tr>
+{% endif %}

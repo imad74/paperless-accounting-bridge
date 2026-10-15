@@ -13,4 +13,5 @@ urlpatterns = [
         include("documents.document_type_urls"),
     ),
     path("documents/", include("documents.urls")),
+    path("purchases/", include("purchases.urls")),
 ]
