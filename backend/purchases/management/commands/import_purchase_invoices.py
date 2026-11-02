@@ -1,6 +1,7 @@
 from collections import Counter
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import DatabaseError
 
 from companies.models import Company
 from documents.paperless_api import PaperlessApiClient, PaperlessApiError
@@ -63,6 +64,7 @@ class Command(BaseCommand):
         )
 
         by_nature, outcome = Counter(), Counter()
+        failures = []
         last_id = None
         self.stdout.write(
             f"Société : {company.code} — natures importées : {', '.join(sorted(natures))}"
@@ -90,11 +92,19 @@ class Command(BaseCommand):
                 if dry_run:
                     outcome["à importer"] += 1
                     continue
-                invoice, created = service.import_document(
-                    company=company,
-                    paperless_document=document,
-                    allowed_natures=natures,
-                )
+                try:
+                    invoice, created = service.import_document(
+                        company=company,
+                        paperless_document=document,
+                        allowed_natures=natures,
+                    )
+                except (DatabaseError, ValueError, ArithmeticError) as error:
+                    outcome["en erreur (non importées)"] += 1
+                    failures.append(document.id)
+                    self.stderr.write(
+                        f"  Document Paperless #{document.id} ({document.title}) non importé : {error}"
+                    )
+                    continue
                 outcome["importées" if created else "déjà importées"] += 1
         except PaperlessApiError as error:
             self.stderr.write(self.style.ERROR(str(error)))
@@ -112,6 +122,11 @@ class Command(BaseCommand):
             self.stdout.write(f"  {key} : {count}")
         if last_id:
             self.stdout.write(f"Dernier document Paperless analysé : #{last_id}")
+        if failures:
+            self.stdout.write(
+                "Documents en erreur, à importer à la main depuis l’écran d’import : "
+                + ", ".join(f"#{document_id}" for document_id in failures[:50])
+            )
         self.stdout.write(
             self.style.SUCCESS(
                 "Terminé. Les factures importées restent « À vérifier » jusqu’à validation."

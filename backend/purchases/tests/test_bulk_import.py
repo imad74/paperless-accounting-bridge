@@ -1,3 +1,4 @@
+from decimal import Decimal
 from io import StringIO
 from unittest.mock import Mock, patch
 
@@ -159,3 +160,73 @@ class BulkImportCommandTests(TestCase):
             [10],
         )
         self.assertIn("déjà importées : 1", output)
+
+
+class OutOfRangeValuesTests(TestCase):
+    """Un numéro lu comme un prix ne doit jamais interrompre l'import (débordement PostgreSQL)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            code="DELIGHT", name="DELIGHT EVENT MANAGEMENT", ice="001443716000088"
+        )
+
+    def test_reference_numbers_are_not_read_as_prices(self):
+        from purchases.extraction import parse_item_line
+
+        self.assertIsNone(parse_item_line("RIB 1 007450000098700000403768 007450000098700000403768"))
+        self.assertIsNone(parse_item_line("ARTICLE TEST 2 202600002873000 405200005746000"))
+
+    def test_aberrant_line_is_skipped_and_invoice_is_imported(self):
+        from purchases.extraction import ExtractedInvoiceLine, ExtractedPurchaseInvoice
+
+        huge = Decimal("202600002873000")
+        extractor = Mock()
+        extractor.extract.return_value = ExtractedPurchaseInvoice(
+            supplier_name="", supplier_ice="", invoice_number="X", invoice_date=None,
+            due_date=None, currency="MAD", net_ht=Decimal("99999999999999999"), tax_amount=None,
+            total_ttc=Decimal("120"),
+            lines=(
+                ExtractedInvoiceLine("Article normal", Decimal("1"), Decimal("100"), Decimal("100"),
+                                     Decimal("20"), Decimal("20"), Decimal("120"), "src", Decimal("85")),
+                ExtractedInvoiceLine("Numéro lu comme prix", Decimal("2"), huge, huge * 2,
+                                     Decimal("20"), Decimal("0"), huge * 2, "src", Decimal("85")),
+            ),
+            confidence=Decimal("50"), notes="", nature="MARCHANDISES",
+        )
+        service = PurchaseInvoiceImportService(client=Mock(), extractor=extractor)
+
+        invoice, created = service.import_document(
+            company=self.company,
+            paperless_document=paperless_document(1, "texte"),
+        )
+
+        self.assertTrue(created)
+        self.assertIsNone(invoice.net_ht)
+        self.assertEqual(list(invoice.lines.values_list("description", flat=True)), ["Article normal"])
+
+    def test_one_failing_document_does_not_stop_the_import(self):
+        from django.db import DataError
+
+        documents = [
+            paperless_document(10, GOODS_TEXT, "89-10-2025"),
+            paperless_document(11, GOODS_TEXT.replace("1171/2025", "1172/2025"), "90-10-2025"),
+        ]
+        client = Mock()
+        client.iter_documents.return_value = iter(documents)
+        original = PurchaseInvoiceImportService.import_document
+
+        def failing_once(service, **kwargs):
+            if kwargs["paperless_document"].id == 10:
+                raise DataError("numeric field overflow")
+            return original(service, **kwargs)
+
+        output, errors = StringIO(), StringIO()
+        with patch(
+            "purchases.management.commands.import_purchase_invoices.PaperlessApiClient",
+            return_value=client,
+        ), patch.object(PurchaseInvoiceImportService, "import_document", failing_once):
+            call_command("import_purchase_invoices", "--company", "DELIGHT", stdout=output, stderr=errors)
+
+        self.assertEqual(list(PurchaseInvoice.objects.values_list("paperless_document_id", flat=True)), [11])
+        self.assertIn("en erreur (non importées) : 1", output.getvalue())
+        self.assertIn("#10", errors.getvalue())

@@ -794,6 +794,10 @@ class PurchaseInvoiceExtractor:
 
 # ---------------------------------------------------------------- lignes d'articles
 _LINE_TOKEN = re.compile(r"\d+(?:[.,]\d+)*")
+# Au-delà, il s'agit d'un numéro (référence, téléphone, RIB) lu comme un nombre.
+MAX_LINE_QUANTITY = Decimal("100000")
+MAX_LINE_UNIT_PRICE = Decimal("10000000")
+MAX_LINE_TOTAL = Decimal("50000000")
 UNIT_WORDS = {
     "u", "un", "unite", "unité", "unites", "unités", "p", "pc", "pcs", "pce", "pces", "piece",
     "pièce", "pieces", "pièces", "m", "m2", "m²", "m3", "ml", "mm", "cm", "kg", "g", "l", "lt",
@@ -874,7 +878,13 @@ def parse_item_line(source, tax_rate=None):
                     for i in candidates_i:
                         for quantity in values[i]:
                             for unit_price in values[j]:
-                                if quantity <= 0 or unit_price <= 0 or quantity > 100000:
+                                if (
+                                    quantity <= 0
+                                    or unit_price <= 0
+                                    or quantity > MAX_LINE_QUANTITY
+                                    or unit_price > MAX_LINE_UNIT_PRICE
+                                    or total > MAX_LINE_TOTAL
+                                ):
                                     continue
                                 product = quantity * unit_price
                                 gap = abs(product - total)
