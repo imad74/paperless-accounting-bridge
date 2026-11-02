@@ -204,3 +204,127 @@ class SupplierViewTests(TestCase):
         names = [row[0] for row in sheet.iter_rows(min_row=2, values_only=True)]
         self.assertEqual(names, ["Transports Sud"])
         self.assertEqual(sheet["F2"].value, "Prestation de service")
+
+
+class AutomaticNatureValidationTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            code="DELIGHT", name="DELIGHT EVENT MANAGEMENT", ice="001443716000088"
+        )
+
+    def build(self, documents, **options):
+        builder = SupplierDirectoryBuilder(
+            company=self.company, extractor=extractor_for_company(self.company)
+        )
+        for document in documents:
+            builder.add_document(document)
+        builder.save(**options)
+
+    def test_detected_nature_is_validated_automatically_and_recalculated(self):
+        self.build([paperless_document(1, GOODS_TEXT, "89-10-2025")], auto_validate=True)
+        supplier = Supplier.objects.get(ice="000216716000096")
+        self.assertEqual(supplier.default_nature, InvoiceNature.GOODS)
+        self.assertEqual(supplier.nature_validation, Supplier.NatureValidation.AUTO)
+
+        # Nouvelle analyse : le fournisseur s'avère surtout prestataire de service.
+        documents = [paperless_document(1, GOODS_TEXT, "89-10-2025")] + [
+            paperless_document(
+                10 + i,
+                SERVICE_TEXT.replace("002887911000047", "000216716000096"),
+            )
+            for i in range(4)
+        ]
+        self.build(documents)
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.detected_nature, InvoiceNature.SERVICE)
+        self.assertEqual(supplier.default_nature, InvoiceNature.SERVICE)
+        self.assertEqual(supplier.nature_validation, Supplier.NatureValidation.AUTO)
+
+    def test_manual_validation_is_never_changed(self):
+        Supplier.objects.create(
+            company=self.company,
+            name="Verrerie Atlas",
+            ice="000216716000096",
+            default_nature=InvoiceNature.RENTAL,
+            nature_validation=Supplier.NatureValidation.MANUAL,
+        )
+        self.build([paperless_document(1, GOODS_TEXT, "89-10-2025")], auto_validate=True)
+
+        supplier = Supplier.objects.get(ice="000216716000096")
+        self.assertEqual(supplier.default_nature, InvoiceNature.RENTAL)
+        self.assertEqual(supplier.nature_validation, Supplier.NatureValidation.MANUAL)
+
+    def test_command_validates_existing_directory_without_rescanning(self):
+        Supplier.objects.create(
+            company=self.company, name="A", ice="000000000000001",
+            detected_nature=InvoiceNature.GOODS, paperless_document_count=3,
+        )
+        Supplier.objects.create(
+            company=self.company, name="B", ice="000000000000002",
+            detected_nature=InvoiceNature.UNKNOWN, paperless_document_count=8,
+        )
+        Supplier.objects.create(
+            company=self.company, name="C", ice="000000000000003",
+            detected_nature=InvoiceNature.GOODS, default_nature=InvoiceNature.SERVICE,
+            nature_validation=Supplier.NatureValidation.MANUAL, paperless_document_count=5,
+        )
+        output = StringIO()
+
+        call_command("auto_validate_suppliers", "--company", "DELIGHT", stdout=output)
+
+        values = dict(Supplier.objects.values_list("name", "default_nature"))
+        self.assertEqual(values, {"A": "MARCHANDISES", "B": "", "C": "SERVICE"})
+        self.assertIn("validées automatiquement : 1", output.getvalue())
+
+
+class SupplierFormValidationTests(SupplierViewTests):
+    def post_supplier(self, supplier, **changes):
+        data = {
+            "name": supplier.name,
+            "ice": supplier.ice,
+            "if_number": "",
+            "rc": "",
+            "activity": "",
+            "default_nature": supplier.default_nature,
+            "address": "",
+            "city": "",
+            "country": "Maroc",
+            "active": "on",
+        }
+        data.update(changes)
+        return self.client.post(reverse("purchases:supplier_update", args=(supplier.pk,)), data)
+
+    def test_changing_the_nature_by_hand_makes_it_manual(self):
+        self.goods.default_nature = InvoiceNature.GOODS
+        self.goods.nature_validation = Supplier.NatureValidation.AUTO
+        self.goods.save()
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        self.post_supplier(self.goods, default_nature=InvoiceNature.SERVICE)
+
+        self.goods.refresh_from_db()
+        self.assertEqual(self.goods.default_nature, InvoiceNature.SERVICE)
+        self.assertEqual(self.goods.nature_validation, Supplier.NatureValidation.MANUAL)
+
+    def test_confirming_an_automatic_nature_makes_it_manual(self):
+        self.goods.default_nature = InvoiceNature.GOODS
+        self.goods.nature_validation = Supplier.NatureValidation.AUTO
+        self.goods.save()
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        self.post_supplier(self.goods, confirm_nature="on")
+
+        self.goods.refresh_from_db()
+        self.assertEqual(self.goods.nature_validation, Supplier.NatureValidation.MANUAL)
+
+    def test_saving_without_touching_the_nature_keeps_it_automatic(self):
+        self.goods.default_nature = InvoiceNature.GOODS
+        self.goods.nature_validation = Supplier.NatureValidation.AUTO
+        self.goods.save()
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        self.post_supplier(self.goods, activity="Fleuriste")
+
+        self.goods.refresh_from_db()
+        self.assertEqual(self.goods.activity, "Fleuriste")
+        self.assertEqual(self.goods.nature_validation, Supplier.NatureValidation.AUTO)

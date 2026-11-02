@@ -133,7 +133,7 @@ class SupplierDirectoryBuilder:
         return groups
 
     @transaction.atomic
-    def save(self, *, min_documents=1):
+    def save(self, *, min_documents=1, auto_validate=False, auto_min_documents=1):
         now = timezone.now()
         created = updated = 0
         groups = [g for g in self.grouped() if g.documents >= min_documents]
@@ -162,6 +162,9 @@ class SupplierDirectoryBuilder:
             supplier.first_document_date = stats.first_date
             supplier.last_document_date = stats.last_date
             supplier.directory_updated_at = now
+            if auto_validate or supplier.nature_validation == Supplier.NatureValidation.AUTO:
+                if supplier.auto_validate_nature(min_documents=auto_min_documents):
+                    self.outcome["natures validées automatiquement (nouvelles ou modifiées)"] += 1
             supplier.save()
             used_names.add(supplier.normalized_name)
         self.outcome["fournisseurs créés"] = created
