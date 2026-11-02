@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Fournisseurs{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-4">
+    <div class="row align-items-center g-2">
+        <div class="col">
+            <h2 class="page-title">Fournisseurs</h2>
+            <div class="text-secondary">
+                {{ summary.total }} fournisseurs · {{ summary.validated }} avec une nature validée ·
+                {{ summary.without_activity }} sans activité renseignée
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <div class="btn-list">
+                <a href="{% url 'purchases:supplier_export' %}{% if query_string %}?{{ query_string }}{% endif %}" class="btn btn-outline-success">
+                    Exporter en Excel
+                </a>
+                {% if can_change %}
+                    <a href="{% url 'purchases:supplier_create' %}" class="btn btn-primary">Nouveau fournisseur</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="row g-2 w-100 align-items-end">
+            <div class="col-lg-3 col-md-6">
+                <label for="supplier-search" class="form-label">Recherche</label>
+                <input id="supplier-search" name="q" value="{{ request.GET.q }}" class="form-control" type="search" placeholder="Nom, ICE ou activité">
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <label for="supplier-nature" class="form-label">Nature</label>
+                <select id="supplier-nature" name="nature" class="form-select">
+                    <option value="">Toutes les natures</option>
+                    {% for value, label in natures %}
+                        <option value="{{ value }}" {% if request.GET.nature == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="supplier-activity" class="form-label">Activité</label>
+                <select id="supplier-activity" name="activite" class="form-select">
+                    <option value="">Toutes</option>
+                    <option value="-" {% if request.GET.activite == "-" %}selected{% endif %}>Non renseignée</option>
+                    {% for activity in activities %}
+                        <option value="{{ activity }}" {% if request.GET.activite == activity %}selected{% endif %}>{{ activity }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="supplier-validated" class="form-label">Nature validée</label>
+                <select id="supplier-validated" name="validee" class="form-select">
+                    <option value="">Peu importe</option>
+                    <option value="non" {% if request.GET.validee == "non" %}selected{% endif %}>À valider</option>
+                    <option value="oui" {% if request.GET.validee == "oui" %}selected{% endif %}>Validée</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="supplier-sort" class="form-label">Trier par</label>
+                <select id="supplier-sort" name="tri" class="form-select">
+                    <option value="documents" {% if request.GET.tri == "documents" or not request.GET.tri %}selected{% endif %}>Nombre de documents</option>
+                    <option value="total" {% if request.GET.tri == "total" %}selected{% endif %}>Total TTC</option>
+                    <option value="recent" {% if request.GET.tri == "recent" %}selected{% endif %}>Dernière facture</option>
+                    <option value="nom" {% if request.GET.tri == "nom" %}selected{% endif %}>Nom</option>
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-outline-primary">Filtrer</button></div>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter table-hover card-table">
+            <thead>
+                <tr>
+                    <th>Fournisseur</th>
+                    <th>Activité</th>
+                    <th>Nature</th>
+                    <th class="text-end">Documents</th>
+                    <th class="text-end">Total TTC détecté</th>
+                    <th>Période</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for supplier in suppliers %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ supplier.name }}</div>
+                            <div class="text-secondary small">{% if supplier.ice %}ICE {{ supplier.ice }}{% else %}ICE non renseigné{% endif %}</div>
+                        </td>
+                        <td>{{ supplier.activity|default:"—" }}</td>
+                        <td>
+                            {% if supplier.effective_nature == "MARCHANDISES" %}
+                                <span class="badge bg-blue-lt">{{ supplier.get_effective_nature_display }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary-lt">{{ supplier.get_effective_nature_display }}</span>
+                            {% endif %}
+                            <div class="text-secondary small">
+                                {% if supplier.nature_is_validated %}validée{% else %}détectée — à valider{% endif %}
+                            </div>
+                        </td>
+                        <td class="text-end">{{ supplier.paperless_document_count }}</td>
+                        <td class="text-end">{% if supplier.detected_total_ttc %}{{ supplier.detected_total_ttc|floatformat:2 }} MAD{% else %}—{% endif %}</td>
+                        <td class="small">
+                            {% if supplier.first_document_date %}
+                                {{ supplier.first_document_date|date:"m/Y" }} → {{ supplier.last_document_date|date:"m/Y" }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if can_change %}
+                                <a href="{% url 'purchases:supplier_update' supplier.pk %}" class="btn btn-sm btn-outline-primary">Modifier</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="7" class="text-center text-secondary py-5">
+                        Aucun fournisseur. Lancez la commande <code>build_supplier_directory</code> pour analyser l’archive.
+                    </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} fournisseurs</p>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value|urlencode }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Précédente</a></li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value|urlencode }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Suivante</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

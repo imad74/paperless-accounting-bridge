@@ -80,11 +80,21 @@
 
                     <li class="nav-item">
                         <a
-                            class="nav-link {% if request.resolver_match.namespace == 'purchases' %}active{% endif %}"
+                            class="nav-link {% if request.resolver_match.namespace == 'purchases' and 'supplier' not in request.resolver_match.url_name %}active{% endif %}"
                             href="{% url 'purchases:list' %}"
                         >
                             <span class="nav-link-icon" aria-hidden="true">🧾</span>
                             <span class="nav-link-title">Factures d’achat</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a
+                            class="nav-link {% if request.resolver_match.namespace == 'purchases' and 'supplier' in request.resolver_match.url_name %}active{% endif %}"
+                            href="{% url 'purchases:supplier_list' %}"
+                        >
+                            <span class="nav-link-icon" aria-hidden="true">🏭</span>
+                            <span class="nav-link-title">Fournisseurs</span>
                         </a>
                     </li>
                 {% endif %}
