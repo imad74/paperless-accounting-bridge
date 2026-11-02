@@ -297,3 +297,34 @@ class InvoiceNatureTests(SimpleTestCase):
             extractor.extract("Facture 5", title="5-3-2023 VENTES").nature,
             NATURE_SALE,
         )
+
+
+class SupplierNameTests(SimpleTestCase):
+    def extractor(self):
+        return PurchaseInvoiceExtractor(
+            excluded_ices=["001443716000088"],
+            excluded_names=["DELIGHT EVENT MANAGEMENT"],
+        )
+
+    def test_legal_identifiers_addresses_and_labels_are_not_names(self):
+        cases = (
+            "Taxe Prof. 64000394. IF. 14457565 » RC. 58971 + ICE. 000216716000096",
+            "LIVRAISON ICE : 000216716000096",
+            "30 QI SIDI GHANEM ROUTE DE SAFI MARRAKECH R.C : 1 ICE : 000216716000096",
+            "DELIGHT EVENT MANGEMENT ICE : 000216716000096",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                name, ice, _ambiguous = self.extractor().extract_supplier_identity(text)
+                self.assertEqual(ice, "000216716000096")
+                self.assertEqual(name, "")
+
+    def test_legal_form_gives_the_company_name(self):
+        text = (
+            "Taxe Prof. 64000394. IF. 14457565 » RC. 58971 + ICE. 000216716000096\n"
+            "EVENT PRINT SARL AU, au capital de 2.000.000,00 Dhs\n"
+        )
+
+        name, _ice, _ambiguous = self.extractor().extract_supplier_identity(text)
+
+        self.assertEqual(name, "EVENT PRINT")
