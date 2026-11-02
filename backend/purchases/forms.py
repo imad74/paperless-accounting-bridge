@@ -157,6 +157,15 @@ class SupplierForm(forms.ModelForm):
     def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.company = company
+        self.fields["default_nature"].label = "Nature validée"
+        self.fields["default_nature"].help_text = (
+            "Laissez vide pour utiliser la nature détectée dans l’archive. "
+            "Une nature validée s’applique à toutes les factures de ce fournisseur."
+        )
+
+    def clean_activity(self):
+        activity = " ".join(self.cleaned_data.get("activity", "").split())
+        return activity[:1].upper() + activity[1:]
 
     class Meta:
         model = Supplier
@@ -165,6 +174,7 @@ class SupplierForm(forms.ModelForm):
             "ice",
             "if_number",
             "rc",
+            "activity",
             "default_nature",
             "address",
             "city",
@@ -176,6 +186,9 @@ class SupplierForm(forms.ModelForm):
             "ice": forms.TextInput(attrs={"class": "form-control"}),
             "if_number": forms.TextInput(attrs={"class": "form-control"}),
             "rc": forms.TextInput(attrs={"class": "form-control"}),
+            "activity": forms.TextInput(
+                attrs={"class": "form-control", "list": "supplier-activities"}
+            ),
             "default_nature": forms.Select(attrs={"class": "form-select"}),
             "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "city": forms.TextInput(attrs={"class": "form-control"}),

@@ -1,7 +1,8 @@
 from django.contrib import messages
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -254,4 +255,170 @@ class SupplierCreateView(CompanyPermissionRequiredMixin, CreateView):
         return response
 
     def get_success_url(self):
-        return reverse_lazy("purchases:list")
+        return reverse_lazy("purchases:supplier_list")
+
+
+SUPPLIER_SORTS = {
+    "documents": ("-paperless_document_count", "name"),
+    "nom": ("name",),
+    "total": (F("detected_total_ttc").desc(nulls_last=True), "name"),
+    "recent": (F("last_document_date").desc(nulls_last=True), "name"),
+}
+
+
+def filtered_suppliers(request, company):
+    """Fournisseurs de la société filtrés par recherche, nature effective et activité."""
+    queryset = Supplier.objects.filter(company=company)
+    search = request.GET.get("q", "").strip()
+    nature = request.GET.get("nature", "").strip()
+    activity = request.GET.get("activite", "").strip()
+    validated = request.GET.get("validee", "").strip()
+    if search:
+        queryset = queryset.filter(
+            Q(name__icontains=search) | Q(ice__icontains=search) | Q(activity__icontains=search)
+        )
+    if nature in InvoiceNature.values:
+        queryset = queryset.filter(
+            Q(default_nature=nature) | (Q(default_nature="") & Q(detected_nature=nature))
+        )
+    if activity == "-":
+        queryset = queryset.filter(activity="")
+    elif activity:
+        queryset = queryset.filter(activity__iexact=activity)
+    if validated == "oui":
+        queryset = queryset.exclude(default_nature="")
+    elif validated == "non":
+        queryset = queryset.filter(default_nature="")
+    sort = request.GET.get("tri", "documents")
+    return queryset.order_by(*SUPPLIER_SORTS.get(sort, SUPPLIER_SORTS["documents"]))
+
+
+class SupplierListView(CompanyPermissionRequiredMixin, ListView):
+    model = Supplier
+    template_name = "purchases/supplier_list.html"
+    context_object_name = "suppliers"
+    paginate_by = 50
+    required_company_permission = CompanyPermission.VIEW_DOCUMENTS
+
+    def get_queryset(self):
+        return filtered_suppliers(self.request, self.active_company)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        all_suppliers = Supplier.objects.filter(company=self.active_company)
+        context["natures"] = InvoiceNature.choices
+        context["activities"] = (
+            all_suppliers.exclude(activity="")
+            .values_list("activity", flat=True)
+            .distinct()
+            .order_by("activity")
+        )
+        context["summary"] = {
+            "total": all_suppliers.count(),
+            "validated": all_suppliers.exclude(default_nature="").count(),
+            "without_activity": all_suppliers.filter(activity="").count(),
+        }
+        context["query_string"] = self.request.GET.urlencode()
+        context["can_change"] = role_has_permission(
+            self.active_company_membership.role,
+            CompanyPermission.CHANGE_DOCUMENTS,
+        )
+        return context
+
+
+class SupplierUpdateView(
+    CompanyPermissionRequiredMixin,
+    ActiveCompanyQuerysetMixin,
+    UpdateView,
+):
+    model = Supplier
+    form_class = SupplierForm
+    template_name = "purchases/supplier_form.html"
+    required_company_permission = CompanyPermission.CHANGE_DOCUMENTS
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["company"] = self.active_company
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["activities"] = (
+            Supplier.objects.filter(company=self.active_company)
+            .exclude(activity="")
+            .values_list("activity", flat=True)
+            .distinct()
+            .order_by("activity")
+        )
+        context["recent_invoices"] = self.object.invoices.order_by("-invoice_date")[:10]
+        return context
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(self.request, "Fournisseur mis à jour.")
+        return response
+
+    def get_success_url(self):
+        return reverse("purchases:supplier_list")
+
+
+class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
+    """Export Excel de la liste des fournisseurs, avec les mêmes filtres que l'écran."""
+
+    model = Supplier
+    required_company_permission = CompanyPermission.VIEW_DOCUMENTS
+
+    def get(self, request, *args, **kwargs):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from openpyxl.utils import get_column_letter
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Fournisseurs"
+        headers = (
+            "Nom", "ICE", "IF", "RC", "Activité", "Nature retenue", "Nature validée",
+            "Nature détectée", "Répartition détectée", "Documents Paperless",
+            "Total TTC détecté (MAD)", "Première facture", "Dernière facture", "Ville", "Actif",
+        )
+        sheet.append(headers)
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        labels = dict(InvoiceNature.choices)
+        for supplier in filtered_suppliers(request, self.active_company):
+            sheet.append((
+                supplier.name,
+                supplier.ice,
+                supplier.if_number,
+                supplier.rc,
+                supplier.activity,
+                labels.get(supplier.effective_nature, ""),
+                labels.get(supplier.default_nature, ""),
+                labels.get(supplier.detected_nature, ""),
+                supplier.detected_nature_details,
+                supplier.paperless_document_count,
+                float(supplier.detected_total_ttc) if supplier.detected_total_ttc is not None else None,
+                supplier.first_document_date,
+                supplier.last_document_date,
+                supplier.city,
+                "oui" if supplier.active else "non",
+            ))
+        widths = (40, 18, 12, 12, 22, 26, 26, 26, 45, 12, 18, 14, 14, 16, 8)
+        for index, width in enumerate(widths, start=1):
+            sheet.column_dimensions[get_column_letter(index)].width = width
+        for row in sheet.iter_rows(min_row=2, min_col=11, max_col=11):
+            for cell in row:
+                cell.number_format = "#,##0.00"
+        for row in sheet.iter_rows(min_row=2, min_col=12, max_col=13):
+            for cell in row:
+                cell.number_format = "DD/MM/YYYY"
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        filename = f"fournisseurs-{self.active_company.code.lower()}-{timezone.localdate():%Y%m%d}.xlsx"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        workbook.save(response)
+        return response

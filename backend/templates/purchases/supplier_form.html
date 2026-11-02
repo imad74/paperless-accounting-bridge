@@ -1,9 +1,52 @@
 {% extends "base.html" %}
 
-{% block title %}Nouveau fournisseur{% endblock %}
+{% block title %}{% if object %}{{ object.name }}{% else %}Nouveau fournisseur{% endif %}{% endblock %}
 
 {% block body %}
-<div class="page-header mb-4"><h2 class="page-title">Nouveau fournisseur</h2></div>
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">{% if object %}{{ object.name }}{% else %}Nouveau fournisseur{% endif %}</h2>
+            {% if object.ice %}<div class="text-secondary">ICE {{ object.ice }}</div>{% endif %}
+        </div>
+        <div class="col-auto ms-auto">
+            <a href="{% url 'purchases:supplier_list' %}" class="btn btn-outline-secondary">Retour aux fournisseurs</a>
+        </div>
+    </div>
+</div>
+
+{% if object and object.directory_updated_at %}
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Ce que l’archive Paperless indique</h3></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="text-secondary small">Nature détectée</div>
+                    <div class="fw-semibold">{{ object.get_detected_nature_display|default:"—" }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary small">Documents</div>
+                    <div class="fw-semibold">{{ object.paperless_document_count }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary small">Total TTC détecté</div>
+                    <div class="fw-semibold">{% if object.detected_total_ttc %}{{ object.detected_total_ttc|floatformat:2 }} MAD{% else %}—{% endif %}</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-secondary small">Période</div>
+                    <div class="fw-semibold">
+                        {% if object.first_document_date %}{{ object.first_document_date|date:"d/m/Y" }} → {{ object.last_document_date|date:"d/m/Y" }}{% else %}—{% endif %}
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="text-secondary small">Répartition des natures lues sur ses documents</div>
+                    <div>{{ object.detected_nature_details|default:"—" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
 <form method="post" class="card" novalidate>
     {% csrf_token %}
     <div class="card-body">
@@ -12,11 +55,31 @@
                 <div class="{% if field.name == 'address' %}col-12{% else %}col-md-6{% endif %}">
                     <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
                     {{ field }}
+                    {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
                     {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
                 </div>
             {% endfor %}
         </div>
+        <datalist id="supplier-activities">
+            {% for activity in activities %}<option value="{{ activity }}">{% endfor %}
+        </datalist>
     </div>
-    <div class="card-footer text-end"><button class="btn btn-primary">Créer le fournisseur</button></div>
+    <div class="card-footer text-end">
+        <button class="btn btn-primary">{% if object %}Enregistrer{% else %}Créer le fournisseur{% endif %}</button>
+    </div>
 </form>
+
+{% if recent_invoices %}
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">Dernières factures importées</h3></div>
+        <div class="list-group list-group-flush">
+            {% for invoice in recent_invoices %}
+                <a class="list-group-item list-group-item-action" href="{% url 'purchases:update' invoice.pk %}">
+                    {{ invoice.invoice_date|date:"d/m/Y"|default:"—" }} · {{ invoice.invoice_number|default:invoice.paperless_title }} ·
+                    {{ invoice.total_ttc|floatformat:2|default:"—" }} {{ invoice.currency }} · {{ invoice.get_nature_display }}
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}
 {% endblock %}

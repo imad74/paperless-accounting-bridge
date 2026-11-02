@@ -15,6 +15,9 @@ from .models import (
 )
 
 
+SUPPLIER_EVIDENCE_MIN_DOCUMENTS = 3
+
+
 def extractor_for_company(company):
     """Extracteur qui ignore l'ICE, le nom et le compte bancaire de la société acheteuse."""
     return PurchaseInvoiceExtractor(
@@ -114,6 +117,14 @@ class PurchaseInvoiceImportService:
         nature = getattr(extracted, "nature", InvoiceNature.UNKNOWN) or InvoiceNature.UNKNOWN
         if supplier and supplier.default_nature:
             nature = supplier.default_nature
+        elif (
+            supplier
+            and nature == InvoiceNature.UNKNOWN
+            and supplier.detected_nature not in ("", InvoiceNature.UNKNOWN, InvoiceNature.SALE)
+            and supplier.paperless_document_count >= SUPPLIER_EVIDENCE_MIN_DOCUMENTS
+        ):
+            # Facture illisible d'un fournisseur bien connu : on reprend sa nature habituelle.
+            nature = supplier.detected_nature
         if nature not in InvoiceNature.values:
             nature = InvoiceNature.UNKNOWN
         return extracted, supplier, nature
@@ -155,6 +166,8 @@ class PurchaseInvoiceImportService:
         notes = extracted.notes
         if supplier and supplier.default_nature:
             notes += f" Nature imposée par le fournisseur : {supplier.get_default_nature_display()}."
+        elif supplier and nature != extracted.nature:
+            notes += f" Nature reprise de l’annuaire fournisseurs : {supplier.get_detected_nature_display()}."
         invoice = PurchaseInvoice.objects.create(
             company=company,
             supplier=supplier,

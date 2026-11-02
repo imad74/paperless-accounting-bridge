@@ -6,9 +6,18 @@ from .services import rebuild_tax_summaries
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ("name", "company", "ice", "if_number", "default_nature", "active")
-    list_filter = ("company", "active", "default_nature")
-    search_fields = ("name", "ice", "if_number", "rc")
+    list_display = (
+        "name",
+        "company",
+        "ice",
+        "activity",
+        "default_nature",
+        "detected_nature",
+        "paperless_document_count",
+        "active",
+    )
+    list_filter = ("company", "active", "default_nature", "detected_nature", "activity")
+    search_fields = ("name", "ice", "if_number", "rc", "activity")
 
 
 class PurchaseInvoiceLineInline(admin.TabularInline):

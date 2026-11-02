@@ -47,6 +47,45 @@ class Supplier(models.Model):
             "pour toutes les factures de ce fournisseur."
         ),
     )
+    activity = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        verbose_name="activité",
+        help_text="Ex. fleuriste, imprimerie, bois, quincaillerie, traiteur.",
+    )
+    # Statistiques calculées par la commande build_supplier_directory.
+    detected_nature = models.CharField(
+        max_length=20,
+        choices=InvoiceNature.choices,
+        blank=True,
+        verbose_name="nature détectée",
+    )
+    detected_nature_details = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="répartition des natures détectées",
+    )
+    paperless_document_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="documents Paperless",
+    )
+    detected_total_ttc = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="total TTC détecté",
+    )
+    first_document_date = models.DateField(
+        null=True, blank=True, verbose_name="première facture"
+    )
+    last_document_date = models.DateField(
+        null=True, blank=True, verbose_name="dernière facture"
+    )
+    directory_updated_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="analyse de l’archive"
+    )
     address = models.TextField(blank=True, verbose_name="adresse")
     city = models.CharField(max_length=100, blank=True, verbose_name="ville")
     country = models.CharField(
@@ -84,6 +123,18 @@ class Supplier(models.Model):
         self.name = " ".join((self.name or "").split())
         self.normalized_name = self.normalize_name(self.name)
         return super().save(*args, **kwargs)
+
+    @property
+    def effective_nature(self):
+        """Nature validée si elle existe, sinon nature détectée dans l'archive."""
+        return self.default_nature or self.detected_nature or InvoiceNature.UNKNOWN
+
+    def get_effective_nature_display(self):
+        return InvoiceNature(self.effective_nature).label
+
+    @property
+    def nature_is_validated(self):
+        return bool(self.default_nature)
 
     def __str__(self):
         return self.name
