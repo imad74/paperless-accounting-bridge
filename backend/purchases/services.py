@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
@@ -16,6 +18,36 @@ from .models import (
 
 
 SUPPLIER_EVIDENCE_MIN_DOCUMENTS = 3
+# Capacité des colonnes (DecimalField max_digits=15) : 10^11 avec 4 décimales, 10^13 avec 2.
+_LIMIT_4_DECIMALS = Decimal("99999999999")
+_LIMIT_2_DECIMALS = Decimal("9999999999999")
+
+
+def plausible_amount(value):
+    """Montant d'en-tête lu par l'OCR, ou None s'il est aberrant."""
+    if value is None:
+        return None
+    try:
+        return value if abs(value) <= _LIMIT_2_DECIMALS else None
+    except (TypeError, InvalidOperation):
+        return None
+
+
+def line_fits_database(line):
+    """Écarte une ligne OCR aberrante plutôt que d'interrompre l'import."""
+    try:
+        return (
+            abs(line.quantity) <= _LIMIT_4_DECIMALS
+            and abs(line.unit_price_ht) <= _LIMIT_4_DECIMALS
+            and all(
+                abs(value) <= _LIMIT_2_DECIMALS
+                for value in (line.total_ht, line.tax_amount, line.total_ttc)
+            )
+            and 0 <= line.tax_rate <= 100
+            and 0 <= getattr(line, "discount_percent", 0) <= 100
+        )
+    except (TypeError, InvalidOperation):
+        return False
 
 
 def extractor_for_company(company):
@@ -209,9 +241,9 @@ class PurchaseInvoiceImportService:
             if not (extracted.due_date and extracted.invoice_date and extracted.due_date < extracted.invoice_date)
             else None,
             currency=extracted.currency,
-            net_ht=extracted.net_ht,
-            tax_amount=extracted.tax_amount,
-            total_ttc=extracted.total_ttc,
+            net_ht=plausible_amount(extracted.net_ht),
+            tax_amount=plausible_amount(extracted.tax_amount),
+            total_ttc=plausible_amount(extracted.total_ttc),
             nature=nature,
             status=PurchaseInvoice.Status.TO_REVIEW,
             extraction_method=PurchaseInvoice.ExtractionMethod.PAPERLESS_OCR,
@@ -236,7 +268,9 @@ class PurchaseInvoiceImportService:
                 source_text=line.source_text,
                 extraction_confidence=line.confidence,
             )
-            for position, line in enumerate(extracted.lines, start=1)
+            for position, line in enumerate(
+                (line for line in extracted.lines if line_fits_database(line)), start=1
+            )
         )
         rebuild_tax_summaries(invoice)
         return invoice, True
