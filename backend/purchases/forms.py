@@ -4,7 +4,7 @@ from django import forms
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
 
-from .models import PurchaseInvoice, PurchaseInvoiceLine, Supplier
+from .models import InvoiceNature, PurchaseInvoice, PurchaseInvoiceLine, Supplier
 
 
 class PaperlessInvoiceImportForm(forms.Form):
@@ -30,12 +30,15 @@ class PurchaseInvoiceForm(forms.ModelForm):
                 )
         self.fields["supplier"].queryset = suppliers.order_by("name")
         self.fields["supplier"].empty_label = "Sélectionner un fournisseur"
+        self.fields["nature"].required = False
 
     class Meta:
         model = PurchaseInvoice
         fields = (
             "supplier",
             "supplier_name_raw",
+            "supplier_ice_raw",
+            "nature",
             "invoice_number",
             "invoice_date",
             "due_date",
@@ -48,12 +51,17 @@ class PurchaseInvoiceForm(forms.ModelForm):
             "extraction_notes",
         )
         labels = {
-            "supplier_name_raw": "Nom fournisseur lu par l’OCR",
+            "supplier_name_raw": "Nom de l’entreprise fournisseur",
+            "supplier_ice_raw": "ICE fournisseur",
             "extraction_notes": "Notes et anomalies",
         }
         widgets = {
             "supplier": forms.Select(attrs={"class": "form-select"}),
             "supplier_name_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_ice_raw": forms.TextInput(
+                attrs={"class": "form-control", "inputmode": "numeric"}
+            ),
+            "nature": forms.Select(attrs={"class": "form-select"}),
             "invoice_number": forms.TextInput(attrs={"class": "form-control"}),
             "invoice_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "due_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
@@ -68,6 +76,13 @@ class PurchaseInvoiceForm(forms.ModelForm):
 
     def clean_currency(self):
         return self.cleaned_data["currency"].strip().upper()
+
+    def clean_nature(self):
+        return (
+            self.cleaned_data.get("nature")
+            or self.instance.nature
+            or InvoiceNature.UNKNOWN
+        )
 
 
 class PurchaseInvoiceLineForm(forms.ModelForm):
@@ -145,12 +160,23 @@ class SupplierForm(forms.ModelForm):
 
     class Meta:
         model = Supplier
-        fields = ("name", "ice", "if_number", "rc", "address", "city", "country", "active")
+        fields = (
+            "name",
+            "ice",
+            "if_number",
+            "rc",
+            "default_nature",
+            "address",
+            "city",
+            "country",
+            "active",
+        )
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "ice": forms.TextInput(attrs={"class": "form-control"}),
             "if_number": forms.TextInput(attrs={"class": "form-control"}),
             "rc": forms.TextInput(attrs={"class": "form-control"}),
+            "default_nature": forms.Select(attrs={"class": "form-select"}),
             "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "city": forms.TextInput(attrs={"class": "form-control"}),
             "country": forms.TextInput(attrs={"class": "form-control"}),

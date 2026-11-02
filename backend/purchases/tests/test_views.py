@@ -143,6 +143,7 @@ class PurchaseInvoiceViewTests(TestCase):
             {
                 "supplier": self.supplier.pk,
                 "supplier_name_raw": "",
+                "supplier_ice_raw": "",
                 "invoice_number": "A-100",
                 "invoice_date": "2026-10-15",
                 "due_date": "",
@@ -222,3 +223,39 @@ class PurchaseInvoiceViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Un fournisseur portant ce nom existe déjà")
         self.assertEqual(Supplier.objects.filter(company=self.company).count(), 1)
+
+    def test_operator_can_refresh_supplier_name_and_ice_from_ocr(self):
+        extracted_supplier = Supplier.objects.create(
+            company=self.company,
+            name="EVENT PRINT",
+            ice="001234567890123",
+        )
+        invoice = PurchaseInvoice.objects.create(
+            company=self.company,
+            paperless_document_id=7890,
+            raw_ocr_text=(
+                "Fournisseur : EVENT PRINT\n"
+                "ICE : 001234567890123\n"
+                "Facture N° FA-1"
+            ),
+        )
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        response = self.client.post(
+            reverse("purchases:refresh_supplier", args=(invoice.pk,))
+        )
+
+        self.assertRedirects(response, reverse("purchases:update", args=(invoice.pk,)))
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.supplier_name_raw, "EVENT PRINT")
+        self.assertEqual(invoice.supplier_ice_raw, "001234567890123")
+        self.assertEqual(invoice.supplier, extracted_supplier)
+
+    def test_viewer_cannot_refresh_supplier_identity(self):
+        self.login(CompanyMembership.Role.VIEWER)
+
+        response = self.client.post(
+            reverse("purchases:refresh_supplier", args=(self.invoice.pk,))
+        )
+
+        self.assertEqual(response.status_code, 403)

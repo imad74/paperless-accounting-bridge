@@ -16,6 +16,10 @@
             <div class="btn-list">
                 {% if object.paperless_document_id %}
                     <a href="{{ paperless_url }}/documents/{{ object.paperless_document_id }}/details" target="_blank" rel="noopener" class="btn btn-outline-secondary">Voir le PDF</a>
+                    <form method="post" action="{% url 'purchases:refresh_supplier' object.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-primary">Relire nom et ICE</button>
+                    </form>
                 {% endif %}
                 <a href="{% url 'purchases:list' %}" class="btn btn-link">Retour</a>
             </div>

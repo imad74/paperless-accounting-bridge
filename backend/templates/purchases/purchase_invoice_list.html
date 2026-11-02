@@ -29,7 +29,7 @@
 <div class="card">
     <div class="card-header">
         <form method="get" class="row g-2 w-100 align-items-end">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label for="purchase-search" class="form-label">Recherche</label>
                 <input id="purchase-search" name="q" value="{{ request.GET.q }}" class="form-control" type="search" placeholder="Fournisseur, facture ou fichier">
             </div>
@@ -39,6 +39,15 @@
                     <option value="">Tous les statuts</option>
                     {% for value, label in statuses %}
                         <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="purchase-nature" class="form-label">Nature</label>
+                <select id="purchase-nature" name="nature" class="form-select">
+                    <option value="">Toutes les natures</option>
+                    {% for value, label in natures %}
+                        <option value="{{ value }}" {% if current_nature == value %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -52,6 +61,7 @@
                     <th>Facture</th>
                     <th>Fournisseur</th>
                     <th>Date</th>
+                    <th>Nature</th>
                     <th class="text-end">TTC</th>
                     <th>Lignes</th>
                     <th>Statut</th>
@@ -65,8 +75,20 @@
                             <div class="fw-semibold">{{ invoice.invoice_number|default:invoice.paperless_title|default:"À compléter" }}</div>
                             <div class="text-secondary small">Paperless #{{ invoice.paperless_document_id }}</div>
                         </td>
-                        <td>{{ invoice.supplier.name|default:invoice.supplier_name_raw|default:"À identifier" }}</td>
+                        <td>
+                            {{ invoice.supplier.name|default:invoice.supplier_name_raw|default:"À identifier" }}
+                            {% if invoice.supplier.ice or invoice.supplier_ice_raw %}
+                                <div class="text-secondary small">ICE {{ invoice.supplier.ice|default:invoice.supplier_ice_raw }}</div>
+                            {% endif %}
+                        </td>
                         <td>{{ invoice.invoice_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td>
+                            {% if invoice.nature == "MARCHANDISES" %}
+                                <span class="badge bg-blue-lt">Marchandises</span>
+                            {% else %}
+                                <span class="badge bg-secondary-lt">{{ invoice.get_nature_display }}</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end">{{ invoice.total_ttc|floatformat:2|default:"—" }} {{ invoice.currency }}</td>
                         <td>{{ invoice.line_count }}</td>
                         <td>
@@ -81,7 +103,7 @@
                         <td><a href="{% url 'purchases:update' invoice.pk %}" class="btn btn-sm btn-outline-primary">Ouvrir</a></td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="7" class="text-center text-secondary py-5">Aucune facture d’achat structurée.</td></tr>
+                    <tr><td colspan="8" class="text-center text-secondary py-5">Aucune facture d’achat structurée.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

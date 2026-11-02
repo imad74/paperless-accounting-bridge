@@ -14,6 +14,17 @@ ZERO = Decimal("0")
 BALANCE_TOLERANCE = Decimal("0.02")
 
 
+class InvoiceNature(models.TextChoices):
+    """Nature de la dépense : seules les marchandises alimentent le stock."""
+
+    GOODS = "MARCHANDISES", "Achat de marchandises"
+    RENTAL = "LOCATION", "Location"
+    SERVICE = "SERVICE", "Prestation de service"
+    EXPENSE = "FRAIS", "Frais (voyage, hôtel, restaurant, carburant)"
+    SALE = "VENTE", "Facture de vente (émise par la société)"
+    UNKNOWN = "INDETERMINEE", "À déterminer"
+
+
 class Supplier(models.Model):
     company = models.ForeignKey(
         Company,
@@ -26,6 +37,16 @@ class Supplier(models.Model):
     ice = models.CharField(max_length=30, blank=True, db_index=True)
     if_number = models.CharField(max_length=30, blank=True, verbose_name="IF")
     rc = models.CharField(max_length=30, blank=True, verbose_name="RC")
+    default_nature = models.CharField(
+        max_length=20,
+        choices=InvoiceNature.choices,
+        blank=True,
+        verbose_name="nature habituelle des factures",
+        help_text=(
+            "Si elle est renseignée, elle remplace la nature devinée par l’OCR "
+            "pour toutes les factures de ce fournisseur."
+        ),
+    )
     address = models.TextField(blank=True, verbose_name="adresse")
     city = models.CharField(max_length=100, blank=True, verbose_name="ville")
     country = models.CharField(
@@ -97,6 +118,12 @@ class PurchaseInvoice(models.Model):
         max_length=255,
         blank=True,
         verbose_name="fournisseur extrait",
+    )
+    supplier_ice_raw = models.CharField(
+        max_length=30,
+        blank=True,
+        db_index=True,
+        verbose_name="ICE fournisseur extrait",
     )
     document = models.OneToOneField(
         Document,
@@ -170,6 +197,13 @@ class PurchaseInvoice(models.Model):
         null=True,
         blank=True,
         verbose_name="total TTC",
+    )
+    nature = models.CharField(
+        max_length=20,
+        choices=InvoiceNature.choices,
+        default=InvoiceNature.UNKNOWN,
+        db_index=True,
+        verbose_name="nature",
     )
     status = models.CharField(
         max_length=20,
