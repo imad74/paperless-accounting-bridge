@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from companies.models import Company
 from documents.paperless_api import PaperlessApiClient, PaperlessApiError
 from purchases.models import InvoiceNature, PurchaseInvoice
-from purchases.services import PurchaseInvoiceImportService
+from purchases.services import PurchaseInvoiceImportService, link_invoices_to_suppliers
 
 
 class Command(BaseCommand):
@@ -101,6 +101,8 @@ class Command(BaseCommand):
             if last_id:
                 self.stderr.write(f"Reprendre avec --from-id {last_id}")
 
+        if not dry_run:
+            outcome["factures rattachées à un fournisseur de l’annuaire"] = link_invoices_to_suppliers(company)
         self.stdout.write("Nature détectée (documents non encore importés) :")
         for value, label in InvoiceNature.choices:
             if by_nature[value]:

@@ -169,6 +169,11 @@ class SupplierDirectoryBuilder:
             used_names.add(supplier.normalized_name)
         self.outcome["fournisseurs créés"] = created
         self.outcome["fournisseurs mis à jour"] = updated
+        from .services import link_invoices_to_suppliers
+
+        self.outcome["factures importées rattachées à leur fournisseur"] = link_invoices_to_suppliers(
+            self.company
+        )
         return groups
 
     @staticmethod

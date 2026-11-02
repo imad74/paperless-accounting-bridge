@@ -183,3 +183,94 @@ class PurchaseReportTests(TestCase):
         )
 
         self.assertContains(response, "La date de début doit précéder la date de fin.")
+
+
+class ReportScreenTests(PurchaseReportTests):
+    def test_empty_result_shows_a_message_instead_of_a_blank_page(self):
+        self.login()
+
+        response = self.client.get(
+            reverse("purchases:report", args=("fournisseurs",)),
+            {"designation": "introuvable", "currency": "MAD"},
+        )
+
+        self.assertContains(response, "Aucune donnée pour ces filtres.")
+
+    def test_supplier_filter_only_lists_suppliers_with_imported_invoices(self):
+        Supplier.objects.create(company=self.company, name="ASTORIA")
+
+        form = PurchaseReportFilterForm(company=self.company)
+
+        names = list(form.fields["supplier"].queryset.values_list("name", flat=True))
+        self.assertEqual(names, ["Fleurs Atlas", "Menara Bois"])
+
+
+class InvoiceSupplierLinkTests(TestCase):
+    def test_invoices_imported_before_the_directory_are_linked_by_ice(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        company = Company.objects.create(code="L-A", name="Liens A")
+        supplier = Supplier.objects.create(company=company, name="EKIPEXPO", ice="003253395000080")
+        exact = PurchaseInvoice.objects.create(company=company, supplier_ice_raw="003253395000080")
+        misread = PurchaseInvoice.objects.create(company=company, supplier_ice_raw="003253395000089")
+        unknown = PurchaseInvoice.objects.create(company=company, supplier_ice_raw="009999999999999")
+        output = StringIO()
+
+        call_command("link_purchase_invoices", "--company", "L-A", stdout=output)
+
+        for invoice in (exact, misread, unknown):
+            invoice.refresh_from_db()
+        self.assertEqual(exact.supplier, supplier)
+        self.assertEqual(misread.supplier, supplier)
+        self.assertIsNone(unknown.supplier)
+        self.assertIn("factures rattachées : 2", output.getvalue())
+
+
+class ArticleCatalogueTests(PurchaseReportTests):
+    def test_catalogue_lists_every_article_with_its_suppliers(self):
+        other = Supplier.objects.create(company=self.company, name="Roses du Sud", ice="000216716000096")
+        invoice = PurchaseInvoice.objects.create(
+            company=self.company,
+            supplier_ice_raw="000216716000098",  # ICE mal lu d'un chiffre, facture non rattachée
+            invoice_date=date(2026, 3, 1),
+            net_ht=Decimal("150"),
+            tax_amount=Decimal("30"),
+            total_ttc=Decimal("180"),
+        )
+        add_line(invoice, 1, "Rose  ROUGE", "50", "3")
+
+        result = self.report("catalogue")
+
+        rose = next(row for row in result.rows if row["designation"].casefold().startswith("rose") and "rouge" in row["designation"].casefold())
+        self.assertEqual(rose["supplier_count"], 2)
+        self.assertEqual(rose["supplier_names"], f"Fleurs Atlas | {other.name}")
+        self.assertEqual(rose["quantity"], Decimal("190"))
+        self.assertEqual(result.rows[0]["supplier_count"], 2)  # les articles multi-fournisseurs d'abord
+
+    def test_multi_supplier_filter_and_price_comparison(self):
+        roses = Supplier.objects.create(company=self.company, name="Roses du Sud")
+        invoice = PurchaseInvoice.objects.create(
+            company=self.company, supplier=roses, invoice_date=date(2026, 3, 1),
+        )
+        add_line(invoice, 1, "rose rouge", "10", "1.5")
+
+        catalogue = self.report("catalogue", multi_suppliers="on", currency="MAD")
+        self.assertEqual([row["designation"].casefold() for row in catalogue.rows], ["rose rouge"])
+
+        comparison = self.report("comparaison")
+        self.assertEqual(
+            [(row["supplier"], row["average_price"]) for row in comparison.rows],
+            [("Roses du Sud", Decimal("1.5000")), ("Fleurs Atlas", Decimal("2.5714"))],
+        )
+
+    def test_articles_button_and_pages(self):
+        self.login()
+
+        response = self.client.get(reverse("purchases:report", args=("catalogue",)))
+
+        self.assertContains(response, "Articles et fournisseurs")
+        self.assertContains(response, "MDF BRUT 18 mm")
+        self.assertContains(response, reverse("purchases:report", args=("catalogue",)))
+        export = self.client.get(reverse("purchases:report", args=("comparaison",)), {"export": "xlsx"})
+        self.assertEqual(export.status_code, 200)

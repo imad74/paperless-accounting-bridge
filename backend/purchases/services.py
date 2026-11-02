@@ -63,6 +63,32 @@ def find_matching_supplier(*, company, name, ice):
 
 
 @transaction.atomic
+def link_invoices_to_suppliers(company):
+    """Rattache à leur fournisseur les factures importées sans fournisseur,
+    d'après l'ICE lu sur la facture (à un chiffre près). Renvoie le nombre rattaché."""
+    suppliers = [
+        (ice_digits(supplier.ice), supplier)
+        for supplier in Supplier.objects.filter(company=company).exclude(ice="")
+        if len(ice_digits(supplier.ice)) == 15
+    ]
+    exact = {ice: supplier for ice, supplier in suppliers}
+    linked = 0
+    invoices = PurchaseInvoice.objects.select_for_update().filter(
+        company=company, supplier__isnull=True
+    ).exclude(supplier_ice_raw="")
+    for invoice in invoices:
+        ice = ice_digits(invoice.supplier_ice_raw)
+        supplier = exact.get(ice) or next(
+            (candidate for known, candidate in suppliers if is_same_ice(known, ice)), None
+        )
+        if supplier:
+            invoice.supplier = supplier
+            invoice.save(update_fields=["supplier", "updated_at"])
+            linked += 1
+    return linked
+
+
+@transaction.atomic
 def refresh_supplier_identity(invoice, *, extractor=None):
     extractor = extractor or extractor_for_company(invoice.company)
     supplier_name, supplier_ice, ambiguous_ice = (

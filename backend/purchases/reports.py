@@ -6,6 +6,8 @@ Les synthèses par fournisseur et par mois utilisent les totaux des factures
 référence d'article, elles sont calculées sur les lignes correspondantes.
 """
 
+import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -24,6 +26,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Lower, NullIf, Trim, TruncMonth
 
+from .extraction import hamming, ice_digits
 from .models import InvoiceNature, PurchaseInvoice, PurchaseInvoiceLine, Supplier
 
 
@@ -33,6 +36,8 @@ QUANTITY = DecimalField(max_digits=18, decimal_places=4)
 UNIDENTIFIED = "(fournisseur non identifié)"
 
 REPORTS = {
+    "catalogue": "Articles et fournisseurs",
+    "comparaison": "Comparaison des prix fournisseurs",
     "lignes": "Détail des lignes d’achat",
     "articles": "Synthèse par article",
     "fournisseurs": "Synthèse par fournisseur",
@@ -94,6 +99,11 @@ class PurchaseReportFilterForm(forms.Form):
         choices=STATUS_CHOICES,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    multi_suppliers = forms.BooleanField(
+        required=False,
+        label="Seulement les articles vendus par plusieurs fournisseurs",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
     currency = forms.CharField(
         required=False,
         initial="MAD",
@@ -105,7 +115,10 @@ class PurchaseReportFilterForm(forms.Form):
     def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
         suppliers = Supplier.objects.filter(company=company) if company else Supplier.objects.none()
-        self.fields["supplier"].queryset = suppliers.order_by("name")
+        # Seuls les fournisseurs ayant au moins une facture importée sont proposés.
+        self.fields["supplier"].queryset = (
+            suppliers.filter(invoices__isnull=False).distinct().order_by("name")
+        )
         activities = (
             suppliers.exclude(activity="").values_list("activity", flat=True).distinct().order_by("activity")
         )
@@ -147,6 +160,8 @@ class PurchaseReportFilterForm(forms.Form):
             parts.append(f"Nature : {InvoiceNature(filters['nature']).label}")
         if filters.get("activity"):
             parts.append(f"Activité : {filters['activity']}")
+        if filters.get("multi_suppliers"):
+            parts.append("Articles vendus par plusieurs fournisseurs")
         parts.append(f"Statut : {dict(STATUS_CHOICES)[filters.get('status', '')]}")
         if filters.get("currency"):
             parts.append(f"Devise : {filters['currency']}")
@@ -437,8 +452,162 @@ def _source_note(on_lines):
     return "Montants issus des totaux des factures (en-têtes)."
 
 
+def _article_key(text):
+    return re.sub(r"\s+", " ", (text or "").strip()).casefold()
+
+
+class SupplierNamer:
+    """Nom du fournisseur d'une facture : fiche rattachée, sinon annuaire par ICE, sinon nom lu."""
+
+    def __init__(self, company):
+        self.directory = {
+            ice_digits(supplier.ice): supplier.name
+            for supplier in Supplier.objects.filter(company=company).exclude(ice="")
+            if len(ice_digits(supplier.ice)) == 15
+        }
+        self.cache = {}
+
+    def __call__(self, invoice):
+        if invoice.supplier_id:
+            return invoice.supplier.name
+        ice = ice_digits(invoice.supplier_ice_raw)
+        if ice:
+            if ice not in self.cache:
+                self.cache[ice] = self.directory.get(ice) or next(
+                    (name for known, name in self.directory.items() if hamming(known, ice) <= 1),
+                    None,
+                )
+            if self.cache[ice]:
+                return self.cache[ice]
+        if invoice.supplier_name_raw:
+            return invoice.supplier_name_raw.strip()
+        return f"ICE {ice}" if ice else UNIDENTIFIED
+
+
+def _articles_by_supplier(company, filters):
+    """{clé article: {"names": Counter, "suppliers": {nom: statistiques}}}"""
+    namer = SupplierNamer(company)
+    articles = defaultdict(lambda: {"names": Counter(), "suppliers": defaultdict(lambda: {
+        "quantity": ZERO, "total": ZERO, "prices": [], "invoices": set(), "last": None, "unit": "",
+    })})
+    lines = filtered_lines(company, filters).select_related("invoice", "invoice__supplier")
+    for line in lines.iterator(chunk_size=2000):
+        key = _article_key(line.description)
+        if not key:
+            continue
+        article = articles[key]
+        article["names"][line.description.strip()] += 1
+        stats = article["suppliers"][namer(line.invoice)]
+        stats["quantity"] += line.quantity or ZERO
+        stats["total"] += line.total_ht or ZERO
+        if line.unit_price_ht:
+            stats["prices"].append(line.unit_price_ht)
+        stats["invoices"].add(line.invoice_id)
+        stats["unit"] = stats["unit"] or line.unit
+        day = line.invoice.invoice_date
+        if day and (stats["last"] is None or day > stats["last"]):
+            stats["last"] = day
+    if filters.get("multi_suppliers"):
+        articles = {key: value for key, value in articles.items() if len(value["suppliers"]) > 1}
+    return articles
+
+
+def catalogue_report(company, filters):
+    rows = []
+    for article in _articles_by_supplier(company, filters).values():
+        suppliers = article["suppliers"]
+        prices = [price for stats in suppliers.values() for price in stats["prices"]]
+        rows.append({
+            "designation": article["names"].most_common(1)[0][0],
+            "supplier_count": len(suppliers),
+            "supplier_names": " | ".join(sorted(suppliers)),
+            "quantity": sum((stats["quantity"] for stats in suppliers.values()), ZERO),
+            "total_ht": sum((stats["total"] for stats in suppliers.values()), ZERO),
+            "min_price": min(prices) if prices else None,
+            "max_price": max(prices) if prices else None,
+            "purchases": len({i for stats in suppliers.values() for i in stats["invoices"]}),
+            "last_date": max((stats["last"] for stats in suppliers.values() if stats["last"]), default=None),
+        })
+    rows.sort(key=lambda row: (-row["supplier_count"], row["designation"].casefold()))
+    columns = [
+        Column("designation", "Désignation"),
+        Column("supplier_count", "Nb fournisseurs", "integer"),
+        Column("supplier_names", "Fournisseurs"),
+        Column("quantity", "Quantité totale", "quantity"),
+        Column("total_ht", "Total HT", "money"),
+        Column("min_price", "Prix unitaire min", "money"),
+        Column("max_price", "Prix unitaire max", "money"),
+        Column("purchases", "Factures", "integer"),
+        Column("last_date", "Dernier achat", "date"),
+    ]
+    totals = {
+        "quantity": sum((row["quantity"] for row in rows), ZERO),
+        "total_ht": sum((row["total_ht"] for row in rows), ZERO),
+        "count": len(rows),
+    }
+    multi = sum(1 for row in rows if row["supplier_count"] > 1)
+    return ReportResult(
+        columns,
+        rows,
+        totals,
+        note=(
+            f"{len(rows)} articles, dont {multi} vendus par plusieurs fournisseurs. "
+            "Articles regroupés par désignation identique (majuscules et espaces ignorés)."
+        ),
+    )
+
+
+def comparison_report(company, filters):
+    filters = dict(filters, multi_suppliers=True)
+    rows = []
+    for article in _articles_by_supplier(company, filters).values():
+        name = article["names"].most_common(1)[0][0]
+        for supplier, stats in article["suppliers"].items():
+            average = (stats["total"] / stats["quantity"]).quantize(Decimal("0.0001")) if stats["quantity"] else None
+            rows.append({
+                "designation": name,
+                "supplier": supplier,
+                "unit": stats["unit"],
+                "quantity": stats["quantity"],
+                "total_ht": stats["total"],
+                "average_price": average,
+                "min_price": min(stats["prices"]) if stats["prices"] else None,
+                "max_price": max(stats["prices"]) if stats["prices"] else None,
+                "purchases": len(stats["invoices"]),
+                "last_date": stats["last"],
+            })
+    rows.sort(key=lambda row: (row["designation"].casefold(), row["average_price"] is None, row["average_price"] or 0))
+    columns = [
+        Column("designation", "Désignation"),
+        Column("supplier", "Fournisseur"),
+        Column("unit", "Unité"),
+        Column("quantity", "Quantité", "quantity"),
+        Column("average_price", "Prix moyen HT", "money"),
+        Column("min_price", "Prix min", "money"),
+        Column("max_price", "Prix max", "money"),
+        Column("total_ht", "Total HT", "money"),
+        Column("purchases", "Factures", "integer"),
+        Column("last_date", "Dernier achat", "date"),
+    ]
+    totals = {
+        "quantity": sum((row["quantity"] for row in rows), ZERO),
+        "total_ht": sum((row["total_ht"] for row in rows), ZERO),
+        "count": len(rows),
+    }
+    return ReportResult(
+        columns,
+        rows,
+        totals,
+        note="Articles vendus par plusieurs fournisseurs : pour chaque article, du moins cher au plus cher.",
+    )
+
+
 def build_report(kind, company, form):
     filters = form.filters
+    if kind == "catalogue":
+        return catalogue_report(company, filters)
+    if kind == "comparaison":
+        return comparison_report(company, filters)
     if kind == "lignes":
         return lines_report(company, filters)
     if kind == "articles":
@@ -488,7 +657,9 @@ def report_workbook(kind, result, *, company, description):
             values.append(value)
         sheet.append(values)
     for index, column in enumerate(result.columns, start=1):
-        width = 40 if column.key in ("description", "designation", "supplier_label") else 15
+        width = {"description": 40, "designation": 40, "supplier_label": 40, "supplier": 35, "supplier_names": 60}.get(
+            column.key, 15
+        )
         sheet.column_dimensions[get_column_letter(index)].width = width
         if column.kind in formats:
             for (cell,) in sheet.iter_rows(min_row=header_row + 1, min_col=index, max_col=index):
