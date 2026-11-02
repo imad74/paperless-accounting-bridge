@@ -47,6 +47,20 @@ class Supplier(models.Model):
             "pour toutes les factures de ce fournisseur."
         ),
     )
+    class NatureValidation(models.TextChoices):
+        AUTO = "AUTO", "Automatique"
+        MANUAL = "MANUEL", "Manuelle"
+
+    nature_validation = models.CharField(
+        max_length=10,
+        choices=NatureValidation.choices,
+        blank=True,
+        verbose_name="validation de la nature",
+        help_text=(
+            "Automatique : recalculée à chaque analyse de l’archive. "
+            "Manuelle : jamais modifiée par le programme."
+        ),
+    )
     activity = models.CharField(
         max_length=100,
         blank=True,
@@ -135,6 +149,30 @@ class Supplier(models.Model):
     @property
     def nature_is_validated(self):
         return bool(self.default_nature)
+
+    @property
+    def nature_is_auto_validated(self):
+        return bool(self.default_nature) and self.nature_validation == self.NatureValidation.AUTO
+
+    def auto_validate_nature(self, *, min_documents=1):
+        """Valide automatiquement la nature détectée, sauf si elle a été validée à la main.
+
+        Renvoie True si la nature validée a changé.
+        """
+        if self.default_nature and self.nature_validation != self.NatureValidation.AUTO:
+            return False  # validation manuelle : on n'y touche jamais
+        usable = self.detected_nature not in ("", InvoiceNature.UNKNOWN, InvoiceNature.SALE)
+        if not usable or self.paperless_document_count < min_documents:
+            if self.nature_validation == self.NatureValidation.AUTO:
+                changed = bool(self.default_nature)
+                self.default_nature = ""
+                self.nature_validation = ""
+                return changed
+            return False
+        changed = self.default_nature != self.detected_nature
+        self.default_nature = self.detected_nature
+        self.nature_validation = self.NatureValidation.AUTO
+        return changed
 
     def __str__(self):
         return self.name

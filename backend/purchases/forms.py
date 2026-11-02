@@ -154,6 +154,13 @@ PurchaseInvoiceLineFormSet = inlineformset_factory(
 
 
 class SupplierForm(forms.ModelForm):
+    confirm_nature = forms.BooleanField(
+        required=False,
+        label="Confirmer la nature validée automatiquement",
+        help_text="Cochée, la nature devient manuelle et ne sera plus recalculée.",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
     def __init__(self, *args, company=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.company = company
@@ -162,6 +169,20 @@ class SupplierForm(forms.ModelForm):
             "Laissez vide pour utiliser la nature détectée dans l’archive. "
             "Une nature validée s’applique à toutes les factures de ce fournisseur."
         )
+        if not (self.instance.pk and self.instance.nature_is_auto_validated):
+            del self.fields["confirm_nature"]
+
+    def save(self, commit=True):
+        supplier = super().save(commit=False)
+        if "default_nature" in self.changed_data:
+            supplier.nature_validation = (
+                Supplier.NatureValidation.MANUAL if supplier.default_nature else ""
+            )
+        elif self.cleaned_data.get("confirm_nature") and supplier.default_nature:
+            supplier.nature_validation = Supplier.NatureValidation.MANUAL
+        if commit:
+            supplier.save()
+        return supplier
 
     def clean_activity(self):
         activity = " ".join(self.cleaned_data.get("activity", "").split())

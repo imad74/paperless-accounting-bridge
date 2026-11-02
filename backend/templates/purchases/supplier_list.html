@@ -8,7 +8,8 @@
         <div class="col">
             <h2 class="page-title">Fournisseurs</h2>
             <div class="text-secondary">
-                {{ summary.total }} fournisseurs · {{ summary.validated }} avec une nature validée ·
+                {{ summary.total }} fournisseurs · {{ summary.validated }} avec une nature validée
+                (dont {{ summary.auto_validated }} automatiquement) ·
                 {{ summary.without_activity }} sans activité renseignée
             </div>
         </div>
@@ -57,6 +58,8 @@
                     <option value="">Peu importe</option>
                     <option value="non" {% if request.GET.validee == "non" %}selected{% endif %}>À valider</option>
                     <option value="oui" {% if request.GET.validee == "oui" %}selected{% endif %}>Validée</option>
+                    <option value="auto" {% if request.GET.validee == "auto" %}selected{% endif %}>Validée automatiquement</option>
+                    <option value="manuelle" {% if request.GET.validee == "manuelle" %}selected{% endif %}>Validée à la main</option>
                 </select>
             </div>
             <div class="col-lg-2 col-md-4">
@@ -99,7 +102,7 @@
                                 <span class="badge bg-secondary-lt">{{ supplier.get_effective_nature_display }}</span>
                             {% endif %}
                             <div class="text-secondary small">
-                                {% if supplier.nature_is_validated %}validée{% else %}détectée — à valider{% endif %}
+                                {% if supplier.nature_is_auto_validated %}validée automatiquement{% elif supplier.nature_is_validated %}validée à la main{% else %}détectée — à valider{% endif %}
                             </div>
                         </td>
                         <td class="text-end">{{ supplier.paperless_document_count }}</td>

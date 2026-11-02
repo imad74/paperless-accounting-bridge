@@ -29,6 +29,20 @@ class Command(BaseCommand):
             "--dry-run", action="store_true", help="Affiche le résultat sans rien enregistrer."
         )
         parser.add_argument(
+            "--auto-validate",
+            action="store_true",
+            help=(
+                "Valide automatiquement la nature détectée des fournisseurs "
+                "(les validations manuelles ne sont jamais modifiées)."
+            ),
+        )
+        parser.add_argument(
+            "--auto-min-documents",
+            type=int,
+            default=1,
+            help="Nombre minimal de documents pour une validation automatique (défaut : 1).",
+        )
+        parser.add_argument(
             "--top", type=int, default=30, help="Nombre de fournisseurs affichés dans le résumé."
         )
 
@@ -62,7 +76,11 @@ class Command(BaseCommand):
             groups = [g for g in groups if g.documents >= options["min_documents"]]
             self.stdout.write(self.style.WARNING("SIMULATION : rien n’est enregistré."))
         else:
-            groups = builder.save(min_documents=options["min_documents"])
+            groups = builder.save(
+                min_documents=options["min_documents"],
+                auto_validate=options["auto_validate"],
+                auto_min_documents=options["auto_min_documents"],
+            )
 
         labels = dict(InvoiceNature.choices)
         by_nature = {}

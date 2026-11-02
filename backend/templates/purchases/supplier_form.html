@@ -23,6 +23,7 @@
                 <div class="col-md-3">
                     <div class="text-secondary small">Nature détectée</div>
                     <div class="fw-semibold">{{ object.get_detected_nature_display|default:"—" }}</div>
+                    {% if object.nature_is_auto_validated %}<div class="small text-secondary">validée automatiquement</div>{% endif %}
                 </div>
                 <div class="col-md-3">
                     <div class="text-secondary small">Documents</div>
@@ -52,9 +53,13 @@
     <div class="card-body">
         <div class="row g-3">
             {% for field in form %}
-                <div class="{% if field.name == 'address' %}col-12{% else %}col-md-6{% endif %}">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
+                <div class="{% if field.name == 'address' or field.name == 'confirm_nature' %}col-12{% else %}col-md-6{% endif %}">
+                    {% if field.name == 'confirm_nature' %}
+                        <label class="form-check">{{ field }} <span class="form-check-label">{{ field.label }}</span></label>
+                    {% else %}
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                    {% endif %}
                     {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
                     {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
                 </div>

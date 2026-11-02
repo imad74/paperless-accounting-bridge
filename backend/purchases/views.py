@@ -287,6 +287,14 @@ def filtered_suppliers(request, company):
         queryset = queryset.filter(activity__iexact=activity)
     if validated == "oui":
         queryset = queryset.exclude(default_nature="")
+    elif validated == "auto":
+        queryset = queryset.exclude(default_nature="").filter(
+            nature_validation=Supplier.NatureValidation.AUTO
+        )
+    elif validated == "manuelle":
+        queryset = queryset.exclude(default_nature="").filter(
+            nature_validation=Supplier.NatureValidation.MANUAL
+        )
     elif validated == "non":
         queryset = queryset.filter(default_nature="")
     sort = request.GET.get("tri", "documents")
@@ -316,6 +324,9 @@ class SupplierListView(CompanyPermissionRequiredMixin, ListView):
         context["summary"] = {
             "total": all_suppliers.count(),
             "validated": all_suppliers.exclude(default_nature="").count(),
+            "auto_validated": all_suppliers.exclude(default_nature="")
+            .filter(nature_validation=Supplier.NatureValidation.AUTO)
+            .count(),
             "without_activity": all_suppliers.filter(activity="").count(),
         }
         context["query_string"] = self.request.GET.urlencode()
@@ -378,7 +389,7 @@ class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
         sheet.title = "Fournisseurs"
         headers = (
             "Nom", "ICE", "IF", "RC", "Activité", "Nature retenue", "Nature validée",
-            "Nature détectée", "Répartition détectée", "Documents Paperless",
+            "Nature détectée", "Validation", "Répartition détectée", "Documents Paperless",
             "Total TTC détecté (MAD)", "Première facture", "Dernière facture", "Ville", "Actif",
         )
         sheet.append(headers)
@@ -395,6 +406,7 @@ class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
                 labels.get(supplier.effective_nature, ""),
                 labels.get(supplier.default_nature, ""),
                 labels.get(supplier.detected_nature, ""),
+                supplier.get_nature_validation_display() if supplier.default_nature else "à valider",
                 supplier.detected_nature_details,
                 supplier.paperless_document_count,
                 float(supplier.detected_total_ttc) if supplier.detected_total_ttc is not None else None,
@@ -403,13 +415,13 @@ class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
                 supplier.city,
                 "oui" if supplier.active else "non",
             ))
-        widths = (40, 18, 12, 12, 22, 26, 26, 26, 45, 12, 18, 14, 14, 16, 8)
+        widths = (40, 18, 12, 12, 22, 26, 26, 26, 14, 45, 12, 18, 14, 14, 16, 8)
         for index, width in enumerate(widths, start=1):
             sheet.column_dimensions[get_column_letter(index)].width = width
-        for row in sheet.iter_rows(min_row=2, min_col=11, max_col=11):
+        for row in sheet.iter_rows(min_row=2, min_col=12, max_col=12):
             for cell in row:
                 cell.number_format = "#,##0.00"
-        for row in sheet.iter_rows(min_row=2, min_col=12, max_col=13):
+        for row in sheet.iter_rows(min_row=2, min_col=13, max_col=14):
             for cell in row:
                 cell.number_format = "DD/MM/YYYY"
         sheet.freeze_panes = "A2"
