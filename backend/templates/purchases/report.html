@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report_title }}{% endblock %}
+
+{% block body %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center g-2">
+        <div class="col">
+            <div class="page-pretitle">États des achats</div>
+            <h2 class="page-title">{{ report_title }}</h2>
+        </div>
+        <div class="col-auto ms-auto">
+            <a href="?{% if filter_query %}{{ filter_query }}&{% endif %}export=xlsx" class="btn btn-outline-success">
+                Exporter en Excel
+            </a>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    {% for slug, label in reports.items %}
+        <li class="nav-item">
+            <a class="nav-link {% if slug == kind %}active{% endif %}"
+               href="{% url 'purchases:report' slug %}{% if filter_query %}?{{ filter_query }}{% endif %}">{{ label }}</a>
+        </li>
+    {% endfor %}
+</ul>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end" novalidate>
+            {% for field in form %}
+                <div class="{% if field.name == 'date_from' or field.name == 'date_to' or field.name == 'currency' %}col-lg-2 col-md-4{% else %}col-lg-3 col-md-6{% endif %}">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+            {% endfor %}
+            <div class="col-auto">
+                <button class="btn btn-primary">Afficher</button>
+                <a href="{% url 'purchases:report' kind %}" class="btn btn-link">Réinitialiser</a>
+            </div>
+            {% for error in form.non_field_errors %}<div class="col-12 text-danger">{{ error }}</div>{% endfor %}
+        </form>
+    </div>
+</div>
+
+{% if page_obj %}
+<div class="card">
+    <div class="card-header d-block">
+        <div class="text-secondary small">{{ description }}</div>
+        {% if result.note %}<div class="text-secondary small">{{ result.note }}</div>{% endif %}
+        <div class="small mt-1">{{ page_obj.paginator.count }} résultat{{ page_obj.paginator.count|pluralize }}</div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter table-sm card-table">
+            <thead>
+                <tr>
+                    {% for column in result.columns %}
+                        <th class="{% if column.kind == 'money' or column.kind == 'quantity' or column.kind == 'integer' %}text-end{% endif %}">{{ column.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for cells in table_rows %}
+                    <tr>
+                        {% for column, value in cells %}
+                            {% include "purchases/_report_cell.html" %}
+                        {% endfor %}
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="{{ result.columns|length }}" class="text-center text-secondary py-5">Aucune donnée pour ces filtres.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if table_rows %}
+                <tfoot>
+                    <tr class="fw-bold">
+                        {% for column, value in total_cells %}
+                            {% if forloop.first %}
+                                <td>Total</td>
+                            {% elif value is not None %}
+                                {% include "purchases/_report_cell.html" %}
+                            {% else %}
+                                <td></td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                </tfoot>
+            {% endif %}
+        </table>
+    </div>
+    {% if page_obj.has_other_pages %}
+        <div class="card-footer d-flex align-items-center">
+            <p class="m-0 text-secondary">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}</p>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Précédente</a></li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&{% endif %}page={{ page_obj.next_page_number }}">Suivante</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

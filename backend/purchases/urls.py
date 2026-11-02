@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import report_views, views
 
 
 app_name = "purchases"
@@ -8,6 +8,7 @@ app_name = "purchases"
 urlpatterns = [
     path("", views.PurchaseInvoiceListView.as_view(), name="list"),
     path("import/", views.PurchaseInvoiceImportView.as_view(), name="import"),
+    path("etats/<slug:kind>/", report_views.PurchaseReportView.as_view(), name="report"),
     path("suppliers/", views.SupplierListView.as_view(), name="supplier_list"),
     path("suppliers/export.xlsx", views.SupplierExportView.as_view(), name="supplier_export"),
     path("suppliers/new/", views.SupplierCreateView.as_view(), name="supplier_create"),
