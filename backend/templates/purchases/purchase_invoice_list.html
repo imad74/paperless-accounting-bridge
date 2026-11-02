@@ -14,6 +14,9 @@
         {% if can_change %}
             <div class="col-auto ms-auto">
                 <div class="btn-list">
+                    <a href="{% url 'purchases:report' 'catalogue' %}" class="btn btn-outline-secondary">
+                        Articles
+                    </a>
                     <a href="{% url 'purchases:supplier_create' %}" class="btn btn-outline-primary">
                         Nouveau fournisseur
                     </a>
