@@ -7,13 +7,18 @@ from django.test import TestCase
 from companies.models import Company
 from documents.paperless_api import PaperlessDocument
 from purchases.extraction import ExtractedInvoiceLine, ExtractedPurchaseInvoice
-from purchases.models import PurchaseInvoice
+from purchases.models import PurchaseInvoice, Supplier
 from purchases.services import PurchaseInvoiceImportService
 
 
 class PurchaseInvoiceImportServiceTests(TestCase):
     def test_import_creates_review_record_and_lines_only_once(self):
         company = Company.objects.create(code="IMP", name="Import")
+        supplier = Supplier.objects.create(
+            company=company,
+            name="EVENT PRINT",
+            ice="001 234 567 890 123",
+        )
         client = Mock()
         client.get_document.return_value = PaperlessDocument(
             id=7890,
@@ -26,6 +31,8 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         )
         extractor = Mock()
         extractor.extract.return_value = ExtractedPurchaseInvoice(
+            supplier_name="EVENT PRINT",
+            supplier_ice="001234567890123",
             invoice_number="FA2200883",
             invoice_date=date(2023, 3, 13),
             due_date=None,
@@ -58,6 +65,9 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         self.assertFalse(duplicate_created)
         self.assertEqual(invoice.pk, duplicate.pk)
         self.assertEqual(invoice.status, PurchaseInvoice.Status.TO_REVIEW)
+        self.assertEqual(invoice.supplier, supplier)
+        self.assertEqual(invoice.supplier_name_raw, "EVENT PRINT")
+        self.assertEqual(invoice.supplier_ice_raw, "001234567890123")
         self.assertEqual(invoice.raw_ocr_text, "Texte OCR")
         self.assertEqual(invoice.lines.count(), 1)
         self.assertEqual(invoice.tax_summaries.count(), 1)

@@ -17,8 +17,12 @@ from .forms import (
     PurchaseInvoiceLineFormSet,
     SupplierForm,
 )
-from .models import PurchaseInvoice, Supplier
-from .services import PurchaseInvoiceImportService, rebuild_tax_summaries
+from .models import InvoiceNature, PurchaseInvoice, Supplier
+from .services import (
+    PurchaseInvoiceImportService,
+    rebuild_tax_summaries,
+    refresh_supplier_identity,
+)
 
 
 class PurchaseInvoiceListView(
@@ -41,6 +45,7 @@ class PurchaseInvoiceListView(
         )
         search = self.request.GET.get("q", "").strip()
         status = self.request.GET.get("status", "").strip()
+        nature = self.request.GET.get("nature", "").strip()
         if search:
             queryset = queryset.filter(
                 Q(invoice_number__icontains=search)
@@ -48,15 +53,20 @@ class PurchaseInvoiceListView(
                 | Q(original_filename__icontains=search)
                 | Q(supplier__name__icontains=search)
                 | Q(supplier_name_raw__icontains=search)
+                | Q(supplier_ice_raw__icontains=search)
             )
         if status in PurchaseInvoice.Status.values:
             queryset = queryset.filter(status=status)
+        if nature in InvoiceNature.values:
+            queryset = queryset.filter(nature=nature)
         return queryset.order_by("-invoice_date", "-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["statuses"] = PurchaseInvoice.Status.choices
         context["current_status"] = self.request.GET.get("status", "")
+        context["natures"] = InvoiceNature.choices
+        context["current_nature"] = self.request.GET.get("nature", "")
         context["can_change"] = role_has_permission(
             self.active_company_membership.role,
             CompanyPermission.CHANGE_DOCUMENTS,
@@ -91,6 +101,12 @@ class PurchaseInvoiceImportView(CompanyPermissionRequiredMixin, FormView):
                 self.request,
                 "Facture importée. Vérifiez les champs et chaque ligne avant validation.",
             )
+            if invoice.nature != InvoiceNature.GOODS:
+                messages.warning(
+                    self.request,
+                    f"Nature détectée : {invoice.get_nature_display()}. "
+                    "Seuls les achats de marchandises alimentent le stock.",
+                )
         else:
             messages.info(self.request, "Cette facture Paperless est déjà importée.")
         return redirect("purchases:update", pk=invoice.pk)
@@ -186,6 +202,37 @@ class PurchaseInvoiceValidateView(
             invoice.validated_at = timezone.now()
             invoice.save(update_fields=("status", "validated_by", "validated_at", "updated_at"))
             messages.success(request, "La facture d’achat a été validée.")
+        return redirect("purchases:update", pk=invoice.pk)
+
+
+class PurchaseInvoiceRefreshSupplierView(
+    CompanyPermissionRequiredMixin,
+    ActiveCompanyQuerysetMixin,
+    UpdateView,
+):
+    model = PurchaseInvoice
+    fields = ()
+    http_method_names = ("post", "options")
+    required_company_permission = CompanyPermission.CHANGE_DOCUMENTS
+
+    def post(self, request, *args, **kwargs):
+        invoice = self.get_object()
+        changed, ambiguous_ice = refresh_supplier_identity(invoice)
+        if ambiguous_ice:
+            messages.warning(
+                request,
+                "Plusieurs ICE ont été trouvés. Sélectionnez manuellement l’ICE du fournisseur.",
+            )
+        elif changed:
+            messages.success(
+                request,
+                "Le nom et l’ICE du fournisseur ont été relus depuis le texte OCR.",
+            )
+        else:
+            messages.info(
+                request,
+                "Aucune nouvelle identité fournisseur fiable n’a été reconnue. Complétez les champs manuellement.",
+            )
         return redirect("purchases:update", pk=invoice.pk)
 
 

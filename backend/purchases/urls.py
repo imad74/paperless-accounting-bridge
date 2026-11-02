@@ -10,5 +10,10 @@ urlpatterns = [
     path("import/", views.PurchaseInvoiceImportView.as_view(), name="import"),
     path("suppliers/new/", views.SupplierCreateView.as_view(), name="supplier_create"),
     path("<int:pk>/", views.PurchaseInvoiceUpdateView.as_view(), name="update"),
+    path(
+        "<int:pk>/refresh-supplier/",
+        views.PurchaseInvoiceRefreshSupplierView.as_view(),
+        name="refresh_supplier",
+    ),
     path("<int:pk>/validate/", views.PurchaseInvoiceValidateView.as_view(), name="validate"),
 ]

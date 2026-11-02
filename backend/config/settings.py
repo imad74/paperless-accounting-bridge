@@ -172,6 +172,13 @@ DOCUMENT_PDF_MAX_BYTES = env_int(
 PAPERLESS_API_URL = os.getenv("PAPERLESS_API_URL", "").strip().rstrip("/")
 PAPERLESS_API_TOKEN = os.getenv("PAPERLESS_API_TOKEN", "").strip()
 PAPERLESS_API_TIMEOUT = env_int("PAPERLESS_API_TIMEOUT", 15)
+# Comptes bancaires de la société (RIB/IBAN, séparés par des virgules) :
+# une facture qui les mentionne comme compte à créditer est une facture de vente.
+PURCHASES_OWN_BANK_ACCOUNTS = tuple(
+    account.strip()
+    for account in os.getenv("PURCHASES_OWN_BANK_ACCOUNTS", "").split(",")
+    if account.strip()
+)
 SCAN_INPUT_DIRECTORY = Path(
     os.getenv("SCAN_INPUT_DIRECTORY", "/scan/incoming")
 )

@@ -6,8 +6,8 @@ from .services import rebuild_tax_summaries
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ("name", "company", "ice", "if_number", "active")
-    list_filter = ("company", "active")
+    list_display = ("name", "company", "ice", "if_number", "default_nature", "active")
+    list_filter = ("company", "active", "default_nature")
     search_fields = ("name", "ice", "if_number", "rc")
 
 
@@ -31,6 +31,8 @@ class PurchaseInvoiceAdmin(admin.ModelAdmin):
     list_display = (
         "invoice_number",
         "supplier",
+        "supplier_ice_raw",
+        "nature",
         "company",
         "invoice_date",
         "total_ttc",
@@ -38,10 +40,11 @@ class PurchaseInvoiceAdmin(admin.ModelAdmin):
         "status",
         "paperless_document_id",
     )
-    list_filter = ("company", "status", "currency", "invoice_date")
+    list_filter = ("company", "nature", "status", "currency", "invoice_date")
     search_fields = (
         "invoice_number",
         "supplier__name",
+        "supplier_ice_raw",
         "paperless_title",
         "original_filename",
     )

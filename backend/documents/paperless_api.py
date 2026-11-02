@@ -93,6 +93,31 @@ class PaperlessApiClient:
         )
         return self._deserialize_document(payload)
 
+    def iter_documents(self, *, min_id=None, page_size=None):
+        """Parcourt tous les documents Paperless (texte OCR compris), par identifiant croissant."""
+        parameters = {
+            "ordering": "id",
+            "page_size": page_size or self.PAGE_SIZE,
+            "page": 1,
+        }
+        while True:
+            payload = self._request_json(
+                f"{self.base_url}/api/documents/?{urlencode(parameters)}"
+            )
+            results = payload.get("results")
+            if not isinstance(results, list):
+                raise PaperlessApiError(
+                    "La réponse de l’API Paperless est invalide."
+                )
+            for item in results:
+                document = self._deserialize_document(item)
+                if min_id and document.id < int(min_id):
+                    continue
+                yield document
+            if not payload.get("next"):
+                return
+            parameters["page"] += 1
+
     def _search_exact_name(self, name):
         documents_by_id = {}
         for document in self._find_documents(title__iexact=name):
