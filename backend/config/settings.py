@@ -74,6 +74,10 @@ ALLOWED_HOSTS = env_list(
 )
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
+# Une facture d’achat peut compter plusieurs centaines de lignes (≈ 15 champs par ligne) :
+# la limite Django par défaut (1 000 champs) provoquait une erreur 400 à l’enregistrement.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = env_int("DJANGO_DATA_UPLOAD_MAX_NUMBER_FIELDS", 20000)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

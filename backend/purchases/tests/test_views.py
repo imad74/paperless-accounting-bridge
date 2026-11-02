@@ -203,6 +203,52 @@ class PurchaseInvoiceViewTests(TestCase):
         self.assertContains(response, "invoice-line-empty-form")
         self.assertContains(response, "lines-__prefix__-description")
 
+    def test_invoice_with_many_lines_can_be_saved(self):
+        """Plus de 1 000 champs envoyés : ne doit pas provoquer d'erreur 400."""
+        self.login(CompanyMembership.Role.OPERATOR)
+        line_count = 90
+        data = {
+            "supplier": self.supplier.pk,
+            "supplier_name_raw": "",
+            "supplier_ice_raw": "",
+            "nature": "MARCHANDISES",
+            "invoice_number": "A-100",
+            "invoice_date": "2026-10-15",
+            "due_date": "",
+            "currency": "MAD",
+            "subtotal_ht": "",
+            "discount_amount": "0",
+            "net_ht": str(line_count),
+            "tax_amount": str(line_count * 0.2),
+            "total_ttc": str(line_count * 1.2),
+            "extraction_notes": "",
+            "lines-TOTAL_FORMS": str(line_count),
+            "lines-INITIAL_FORMS": "0",
+            "lines-MIN_NUM_FORMS": "0",
+            "lines-MAX_NUM_FORMS": "1000",
+        }
+        for index in range(line_count):
+            data.update({
+                f"lines-{index}-position": str(index + 1),
+                f"lines-{index}-reference": f"REF-{index}",
+                f"lines-{index}-description": f"Article {index}",
+                f"lines-{index}-quantity": "1",
+                f"lines-{index}-unit": "U",
+                f"lines-{index}-unit_price_ht": "1",
+                f"lines-{index}-discount_percent": "0",
+                f"lines-{index}-tax_rate": "20",
+                f"lines-{index}-total_ht": "1",
+                f"lines-{index}-tax_amount": "0.20",
+                f"lines-{index}-total_ttc": "1.20",
+            })
+        self.assertGreater(len(data), 1000)
+
+        response = self.client.post(reverse("purchases:update", args=(self.invoice.pk,)), data)
+
+        self.assertRedirects(response, reverse("purchases:update", args=(self.invoice.pk,)))
+        self.assertEqual(self.invoice.lines.count(), line_count)
+
+
     def test_duplicate_supplier_name_is_reported_in_the_form(self):
         self.login(CompanyMembership.Role.OPERATOR)
 
