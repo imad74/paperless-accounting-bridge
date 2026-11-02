@@ -47,7 +47,7 @@ class SupplierDirectoryBuilderTests(TestCase):
         goods_supplier = Supplier.objects.get(company=self.company, ice="000216716000096")
         self.assertEqual(goods_supplier.paperless_document_count, 4)
         self.assertEqual(goods_supplier.detected_nature, InvoiceNature.GOODS)
-        self.assertEqual(goods_supplier.name, "VERRERIE ATLAS SARL")
+        self.assertEqual(goods_supplier.name, "VERRERIE ATLAS")
         self.assertEqual(str(goods_supplier.detected_total_ttc), "46753.92")
         self.assertEqual(goods_supplier.first_document_date.isoformat(), "2025-10-22")
         service_supplier = Supplier.objects.get(company=self.company, ice="002887911000047")

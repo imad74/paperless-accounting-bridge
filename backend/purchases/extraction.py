@@ -401,6 +401,21 @@ class PurchaseInvoiceExtractor:
     LEGAL_FORM_NAME = re.compile(
         r"([A-Z][A-Za-z0-9&'’. \-]{2,40}?)\s*[:,]?\s*(?:S\.?A\.?R\.?L\.?(?:\s*AU)?|SARL|S\.A\.)\b"
     )
+    STE_NAME = re.compile(
+        r"(?:^|\n)\s*(?:STE|ST[ÉE]|SOCI[EÉ]T[EÉ])\.?\s+([A-Z][A-Za-z0-9&'’. \-]{2,40})",
+        re.IGNORECASE,
+    )
+    LEGAL_FORMS = {"sarl", "s.a.r.l", "s.a.r.l.", "sa", "s.a", "s.a.", "au", "ste", "sté", "société", "societe", "sas", "snc"}
+    NAME_STOP_WORDS = {
+        "livraison", "facture", "client", "date", "page", "total", "bon", "commande", "maroc", "marrakech",
+        "casablanca", "rabat", "tanger", "agadir", "fes", "fès", "adresse", "taxe", "prof", "fax", "tel", "tél",
+        "de", "du", "des", "la", "le", "les", "et", "en", "d", "l", "n°", "ice", "rc", "if", "tp", "dh", "mad",
+        "capital", "siège", "social", "code", "ref", "réf", "anonyme", "responsabilité", "limitée", "conseil", "administration",
+    }
+    ADDRESS_WORDS = {
+        "rue", "route", "avenue", "av", "bd", "boulevard", "lot", "lotissement", "quartier", "qi", "zone", "z.i",
+        "immeuble", "imm", "appt", "étage", "etage", "résidence", "residence", "km", "sidi", "ghanem", "safi",
+    }
     CUSTOMER_LABELS = ("client", "acheteur", "destinataire", "facturé à", "facture à")
     NOT_A_NAME = re.compile(
         r"^(?:code|n[°o]?|num[ée]ro|rc|r\.c|if|i\.f|tp|patente|cnss|tel|tél|fax|adresse|page)\b",
@@ -562,28 +577,57 @@ class PurchaseInvoiceExtractor:
         ambiguous = len(canonical) > 1
         supplier_ice = canonical[0] if len(canonical) == 1 else ""
 
-        supplier_name = self._first_group(text, self.SUPPLIER_NAME_PATTERNS)
-        if self._is_excluded_name(supplier_name, excluded_names):
-            supplier_name = ""
-        if not supplier_name and supplier_ice:
-            for ice, prefix in occurrences:
-                if hamming(ice, supplier_ice) <= 1:
-                    candidate = self._clean_company_name(prefix)
-                    if candidate and not self._is_excluded_name(candidate, excluded_names):
-                        supplier_name = candidate
-                        break
-        if not supplier_name:
-            for match in self.LEGAL_FORM_NAME.finditer(text):
-                candidate = " ".join(match.group(1).split()).strip(" -:,.")
-                if (
-                    len(candidate) > 3
-                    and not self._is_excluded_name(candidate, excluded_names)
-                    and not re.search(r"capital|soci[ée]t[ée]$", candidate, re.IGNORECASE)
-                ):
-                    supplier_name = candidate
-                    break
+        supplier_name = self._best_supplier_name(
+            text, supplier_ice, occurrences, excluded_names
+        )
         supplier_name = " ".join(supplier_name.split())[:255]
         return supplier_name, supplier_ice, ambiguous, canonical
+
+    def _best_supplier_name(self, text, supplier_ice, occurrences, excluded_names):
+        """Choisit le nom le plus fiable : libellé explicite, forme juridique, ligne de l'ICE."""
+        candidates = []  # (fiabilité, position, nom)
+        for match in self.SUPPLIER_NAME_PATTERNS[0].finditer(text):
+            candidates.append((3, match.start(), match.group(1)))
+        for pattern in (self.LEGAL_FORM_NAME, self.STE_NAME):
+            for match in pattern.finditer(text):
+                candidates.append((2, match.start(), match.group(1)))
+        if supplier_ice:
+            for ice, prefix in occurrences:
+                if hamming(ice, supplier_ice) <= 1:
+                    candidates.append((1, 0, self._clean_company_name(prefix)))
+        for _score, _position, raw in sorted(candidates, key=lambda c: (-c[0], c[1])):
+            name = self._tidy_name(raw)
+            if self._is_plausible_name(name) and not self._is_excluded_name(name, excluded_names):
+                return name
+        return ""
+
+    @staticmethod
+    def _tidy_name(raw):
+        name = " ".join((raw or "").split()).strip(" -:;,.|«»\"'")
+        # Coupe avant adresse, contacts et identifiants légaux.
+        name = re.split(
+            r"\s(?:au\s+capital|capital|r\.?\s?c\.?\s*[:n°]|i\.?\s?f\.?\s*[:n°]|ice\b|tp\s?:|patente|"
+            r"taxe|cnss|c\.n\.s\.s|t[ée]l\b|fax|gsm|e-?mail|si[eè]ge|adresse|rib)",
+            name,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        return name.strip(" -:;,.|")[:120]
+
+    def _is_plausible_name(self, name):
+        if not name or len(name) > 60:
+            return False
+        letters = re.findall(r"[A-Za-zÀ-ÿ]", name)
+        digits = re.findall(r"\d", name)
+        if len(letters) < 3 or len(digits) > len(letters) / 3:
+            return False
+        if self.NOT_A_NAME.match(name) or re.match(r"\d", name):
+            return False
+        words = {w.casefold().strip(".") for w in re.findall(r"[\wÀ-ÿ.'’&]+", name)}
+        meaningful = words - self.NAME_STOP_WORDS - self.LEGAL_FORMS
+        if len(words & self.ADDRESS_WORDS) >= 2:
+            return False
+        return bool(meaningful) and not (words & self.ADDRESS_WORDS and len(meaningful) <= 2)
 
     def _clean_company_name(self, prefix):
         prefix = prefix.strip(" :-#|,.;")
@@ -610,9 +654,16 @@ class PurchaseInvoiceExtractor:
     @staticmethod
     def _is_excluded_name(name, excluded_names):
         folded = (name or "").casefold()
-        return bool(folded) and any(
-            excluded in folded or folded in excluded for excluded in excluded_names
-        )
+        if not folded:
+            return False
+        for excluded in excluded_names:
+            if excluded in folded or folded in excluded:
+                return True
+            # « DELIGHT EVENT MANGEMENT » : le premier mot distinctif suffit.
+            first_word = next((w for w in excluded.split() if len(w) >= 4), "")
+            if first_word and first_word in folded:
+                return True
+        return False
 
     # ------------------------------------------------------------ en-tête
     def _invoice_part(self, text):
