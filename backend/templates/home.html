@@ -12,8 +12,8 @@
               Une base solide pour gérer vos documents de bout en bout autour de Paperless-ngx.
             </p>
             <div class="d-flex flex-wrap gap-2">
-              <a href="/health/" class="btn btn-primary">Vérifier l’état</a>
-              <a href="/admin/" class="btn btn-outline-secondary">Administration</a>
+              <a href="{% url 'health_check' %}" class="btn btn-primary">Vérifier l’état</a>
+              <a href="{% url 'admin:index' %}" class="btn btn-outline-secondary">Administration</a>
             </div>
           </div>
         </div>
