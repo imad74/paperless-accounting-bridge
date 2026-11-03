@@ -160,14 +160,21 @@ TIME_ZONE = "Europe/Paris"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "/static/"
+# Sous-chemin public facultatif : « /pab » pour servir PAB sous
+# https://archive.delight-event.com/pab/ (le proxy Nginx retire ce préfixe).
+_URL_PREFIX = os.getenv("PAB_URL_PREFIX", "").strip().strip("/")
+URL_PREFIX = f"/{_URL_PREFIX}" if _URL_PREFIX else ""
+if URL_PREFIX:
+    FORCE_SCRIPT_NAME = URL_PREFIX
+
+STATIC_URL = f"{URL_PREFIX}/static/"
 
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "/media/"
+MEDIA_URL = f"{URL_PREFIX}/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DOCUMENT_PDF_MAX_BYTES = env_int(
     "DOCUMENT_PDF_MAX_BYTES",
@@ -201,9 +208,21 @@ SCAN_DEFAULT_DOCUMENT_TYPE_CODE = os.getenv(
 ).strip()
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_URL = "/admin/login/"
-LOGIN_REDIRECT_URL = "/"
-LOGOUT_REDIRECT_URL = "/"
+# Noms d'URL : ils tiennent compte automatiquement du sous-chemin.
+LOGIN_URL = "admin:login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "home"
+
+# Cookies propres à PAB : sur un domaine partagé avec Paperless, les noms par défaut
+# (sessionid, csrftoken) se mélangeraient et déconnecteraient l'une ou l'autre application.
+SESSION_COOKIE_NAME = os.getenv(
+    "DJANGO_SESSION_COOKIE_NAME", "pab_sessionid" if URL_PREFIX else "sessionid"
+)
+CSRF_COOKIE_NAME = os.getenv(
+    "DJANGO_CSRF_COOKIE_NAME", "pab_csrftoken" if URL_PREFIX else "csrftoken"
+)
+SESSION_COOKIE_PATH = f"{URL_PREFIX}/" if URL_PREFIX else "/"
+CSRF_COOKIE_PATH = f"{URL_PREFIX}/" if URL_PREFIX else "/"
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
