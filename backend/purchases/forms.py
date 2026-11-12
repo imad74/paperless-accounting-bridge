@@ -31,6 +31,7 @@ class PurchaseInvoiceForm(forms.ModelForm):
         self.fields["supplier"].queryset = suppliers.order_by("name")
         self.fields["supplier"].empty_label = "Sélectionner un fournisseur"
         self.fields["nature"].required = False
+        self.fields["shipping_amount"].required = False
 
     class Meta:
         model = PurchaseInvoice
@@ -40,19 +41,36 @@ class PurchaseInvoiceForm(forms.ModelForm):
             "supplier_ice_raw",
             "nature",
             "invoice_number",
+            "purchase_order_number",
             "invoice_date",
             "due_date",
             "currency",
+            "supplier_address_raw",
+            "supplier_contact_raw",
+            "supplier_if_raw",
+            "supplier_rc_raw",
+            "buyer_name_raw",
+            "buyer_tax_id_raw",
+            "billing_address_raw",
+            "delivery_address_raw",
             "subtotal_ht",
             "discount_amount",
+            "shipping_amount",
             "net_ht",
             "tax_amount",
             "total_ttc",
+            "amount_due",
+            "payment_method",
+            "payment_terms",
+            "supplier_iban",
+            "supplier_swift",
             "extraction_notes",
         )
         labels = {
             "supplier_name_raw": "Nom de l’entreprise fournisseur",
             "supplier_ice_raw": "ICE fournisseur",
+            "buyer_name_raw": "Nom de l’entreprise acheteuse",
+            "buyer_tax_id_raw": "ICE/identifiant fiscal acheteur",
             "extraction_notes": "Notes et anomalies",
         }
         widgets = {
@@ -63,14 +81,29 @@ class PurchaseInvoiceForm(forms.ModelForm):
             ),
             "nature": forms.Select(attrs={"class": "form-select"}),
             "invoice_number": forms.TextInput(attrs={"class": "form-control"}),
+            "purchase_order_number": forms.TextInput(attrs={"class": "form-control"}),
             "invoice_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "due_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "currency": forms.TextInput(attrs={"class": "form-control", "maxlength": 3}),
+            "supplier_address_raw": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "supplier_contact_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_if_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_rc_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "buyer_name_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "buyer_tax_id_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "billing_address_raw": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "delivery_address_raw": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "subtotal_ht": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "discount_amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "shipping_amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "net_ht": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "tax_amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "total_ttc": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "amount_due": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "payment_method": forms.TextInput(attrs={"class": "form-control"}),
+            "payment_terms": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_iban": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_swift": forms.TextInput(attrs={"class": "form-control"}),
             "extraction_notes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
@@ -83,6 +116,9 @@ class PurchaseInvoiceForm(forms.ModelForm):
             or self.instance.nature
             or InvoiceNature.UNKNOWN
         )
+
+    def clean_shipping_amount(self):
+        return self.cleaned_data.get("shipping_amount") or Decimal("0")
 
 
 class PurchaseInvoiceLineForm(forms.ModelForm):

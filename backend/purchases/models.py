@@ -188,6 +188,7 @@ class PurchaseInvoice(models.Model):
     class ExtractionMethod(models.TextChoices):
         MANUAL = "MANUAL", "Saisie manuelle"
         PAPERLESS_OCR = "PAPERLESS_OCR", "OCR Paperless"
+        AI_PDF = "AI_PDF", "Analyse IA du PDF"
 
     company = models.ForeignKey(
         Company,
@@ -242,6 +243,11 @@ class PurchaseInvoice(models.Model):
         blank=True,
         verbose_name="numéro de facture",
     )
+    purchase_order_number = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="numéro de bon de commande",
+    )
     invoice_date = models.DateField(
         null=True,
         blank=True,
@@ -253,6 +259,43 @@ class PurchaseInvoice(models.Model):
         verbose_name="date d’échéance",
     )
     currency = models.CharField(max_length=3, default="MAD", verbose_name="devise")
+    supplier_address_raw = models.TextField(
+        blank=True,
+        verbose_name="adresse fournisseur extraite",
+    )
+    supplier_contact_raw = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="coordonnées fournisseur extraites",
+    )
+    supplier_if_raw = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="IF fournisseur extrait",
+    )
+    supplier_rc_raw = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="RC fournisseur extrait",
+    )
+    buyer_name_raw = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="nom acheteur extrait",
+    )
+    buyer_tax_id_raw = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="ICE/identifiant fiscal acheteur extrait",
+    )
+    billing_address_raw = models.TextField(
+        blank=True,
+        verbose_name="adresse de facturation extraite",
+    )
+    delivery_address_raw = models.TextField(
+        blank=True,
+        verbose_name="adresse de livraison extraite",
+    )
     subtotal_ht = models.DecimalField(
         max_digits=15,
         decimal_places=2,
@@ -265,6 +308,12 @@ class PurchaseInvoice(models.Model):
         decimal_places=2,
         default=ZERO,
         verbose_name="remise globale",
+    )
+    shipping_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=ZERO,
+        verbose_name="frais de livraison",
     )
     net_ht = models.DecimalField(
         max_digits=15,
@@ -286,6 +335,33 @@ class PurchaseInvoice(models.Model):
         null=True,
         blank=True,
         verbose_name="total TTC",
+    )
+    amount_due = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="montant à payer",
+    )
+    payment_method = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="mode de paiement",
+    )
+    payment_terms = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="conditions de paiement",
+    )
+    supplier_iban = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="IBAN/RIB fournisseur",
+    )
+    supplier_swift = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="SWIFT/BIC fournisseur",
     )
     nature = models.CharField(
         max_length=20,
@@ -347,6 +423,10 @@ class PurchaseInvoice(models.Model):
             models.CheckConstraint(
                 condition=Q(discount_amount__gte=0),
                 name="purchase_invoice_discount_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(shipping_amount__gte=0),
+                name="purchase_invoice_shipping_non_negative",
             ),
         ]
 
@@ -534,3 +614,47 @@ class PurchaseInvoiceTaxSummary(models.Model):
 
     def __str__(self):
         return f"TVA {self.tax_rate}%"
+
+
+class PurchaseInvoiceAnalysisJob(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "En attente"
+        RUNNING = "RUNNING", "En cours"
+        SUCCEEDED = "SUCCEEDED", "Terminée"
+        FAILED = "FAILED", "Échouée"
+
+    invoice = models.OneToOneField(
+        PurchaseInvoice,
+        on_delete=models.CASCADE,
+        related_name="ai_analysis_job",
+        verbose_name="facture",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name="statut",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_purchase_invoice_analyses",
+        verbose_name="demandée par",
+    )
+    model_name = models.CharField(max_length=100, blank=True, verbose_name="modèle")
+    error_message = models.TextField(blank=True, verbose_name="erreur")
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("created_at",)
+        verbose_name = "tâche d’analyse IA"
+        verbose_name_plural = "tâches d’analyse IA"
+
+    def __str__(self):
+        return f"{self.invoice} — {self.get_status_display()}"

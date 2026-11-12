@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import PurchaseInvoice, PurchaseInvoiceLine, PurchaseInvoiceTaxSummary, Supplier
+from .models import (
+    PurchaseInvoice,
+    PurchaseInvoiceAnalysisJob,
+    PurchaseInvoiceLine,
+    PurchaseInvoiceTaxSummary,
+    Supplier,
+)
 from .services import rebuild_tax_summaries
 
 
@@ -39,6 +45,7 @@ class PurchaseInvoiceTaxSummaryInline(admin.TabularInline):
 class PurchaseInvoiceAdmin(admin.ModelAdmin):
     list_display = (
         "invoice_number",
+        "purchase_order_number",
         "supplier",
         "supplier_ice_raw",
         "nature",
@@ -56,6 +63,8 @@ class PurchaseInvoiceAdmin(admin.ModelAdmin):
         "supplier_ice_raw",
         "paperless_title",
         "original_filename",
+        "purchase_order_number",
+        "buyer_name_raw",
     )
     inlines = (PurchaseInvoiceLineInline, PurchaseInvoiceTaxSummaryInline)
 
@@ -63,3 +72,11 @@ class PurchaseInvoiceAdmin(admin.ModelAdmin):
         super().save_formset(request, form, formset, change)
         if formset.model is PurchaseInvoiceLine:
             rebuild_tax_summaries(form.instance)
+
+
+@admin.register(PurchaseInvoiceAnalysisJob)
+class PurchaseInvoiceAnalysisJobAdmin(admin.ModelAdmin):
+    list_display = ("invoice", "status", "model_name", "requested_by", "created_at", "finished_at")
+    list_filter = ("status", "model_name")
+    search_fields = ("invoice__invoice_number", "invoice__paperless_title", "error_message")
+    readonly_fields = ("created_at", "started_at", "finished_at", "updated_at")

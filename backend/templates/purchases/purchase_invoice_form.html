@@ -20,6 +20,12 @@
                         {% csrf_token %}
                         <button type="submit" class="btn btn-outline-primary">Relire nom et ICE</button>
                     </form>
+                    {% if ai_extraction_available %}
+                        <form method="post" action="{% url 'purchases:analyze_ai' object.pk %}" onsubmit="return confirm('Le PDF sera analysé localement sur le VPS. Les champs extraits et les lignes actuelles seront remplacés. Continuer ?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary" {% if ai_job.status == "PENDING" or ai_job.status == "RUNNING" %}disabled{% endif %}>Analyser le PDF par IA</button>
+                        </form>
+                    {% endif %}
                 {% endif %}
                 <a href="{% url 'purchases:list' %}" class="btn btn-link">Retour</a>
             </div>
@@ -29,6 +35,18 @@
 
 {% if object.status == "VALIDATED" %}
     <div class="alert alert-success">Facture validée par {{ object.validated_by }} le {{ object.validated_at|date:"d/m/Y H:i" }}.</div>
+{% endif %}
+
+{% if ai_job %}
+    {% if ai_job.status == "PENDING" %}
+        <div class="alert alert-info">Analyse IA locale en attente.</div>
+    {% elif ai_job.status == "RUNNING" %}
+        <div class="alert alert-info">Analyse IA locale en cours avec {{ ai_job.model_name }}.</div>
+    {% elif ai_job.status == "SUCCEEDED" %}
+        <div class="alert alert-success">Dernière analyse IA locale terminée. Vérifiez tous les champs et les lignes.</div>
+    {% elif ai_job.status == "FAILED" %}
+        <div class="alert alert-danger">L’analyse IA locale a échoué : {{ ai_job.error_message }}</div>
+    {% endif %}
 {% endif %}
 
 <form method="post" novalidate>

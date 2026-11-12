@@ -19,5 +19,10 @@ urlpatterns = [
         views.PurchaseInvoiceRefreshSupplierView.as_view(),
         name="refresh_supplier",
     ),
+    path(
+        "<int:pk>/analyze-ai/",
+        views.PurchaseInvoiceAnalyzeAiView.as_view(),
+        name="analyze_ai",
+    ),
     path("<int:pk>/validate/", views.PurchaseInvoiceValidateView.as_view(), name="validate"),
 ]

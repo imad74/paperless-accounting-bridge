@@ -68,6 +68,14 @@ contrôlée. La validation comptable est bloquée tant que les lignes ne sont pa
 marquées comme vérifiées et que leurs totaux HT, TVA et TTC ne correspondent
 pas à la facture.
 
+Une extraction visuelle facultative peut lire directement le PDF avec une IA
+et proposer les coordonnées fournisseur/acheteur, ICE, références, lignes,
+remises, frais, taxes, modalités et coordonnées de paiement. Configurez
+le service Ollama local puis utilisez **Analyser le PDF par IA**. Les données
+restent sur le VPS, sont soumises à la validation humaine et le PDF n’est jamais
+modifié. Activez cette fonction avec `PURCHASES_AI_ENABLED=True`. Le traitement
+est confié à un worker séparé : la page web reste disponible pendant l’analyse.
+
 Docker Compose charge automatiquement `docker-compose.override.yml` en
 développement afin de monter le code et d’utiliser `runserver`. Le déploiement
 doit charger uniquement `docker-compose.yml`, qui conserve la commande Gunicorn

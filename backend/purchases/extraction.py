@@ -67,6 +67,23 @@ class ExtractedPurchaseInvoice:
     nature_details: str = ""
     totals_method: str = ""
     tax_rate: Decimal | None = None
+    purchase_order_number: str = ""
+    supplier_address: str = ""
+    supplier_contact: str = ""
+    supplier_if: str = ""
+    supplier_rc: str = ""
+    buyer_name: str = ""
+    buyer_tax_id: str = ""
+    billing_address: str = ""
+    delivery_address: str = ""
+    subtotal_ht: Decimal | None = None
+    discount_amount: Decimal | None = None
+    shipping_amount: Decimal | None = None
+    amount_due: Decimal | None = None
+    payment_method: str = ""
+    payment_terms: str = ""
+    supplier_iban: str = ""
+    supplier_swift: str = ""
 
 
 def parse_decimal(value):

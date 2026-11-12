@@ -1,15 +1,21 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import CompanyMembership
 from accounts.services import ACTIVE_COMPANY_SESSION_KEY
 from companies.models import Company
-from purchases.models import PurchaseInvoice, PurchaseInvoiceLine, Supplier
+from purchases.models import (
+    PurchaseInvoice,
+    PurchaseInvoiceAnalysisJob,
+    PurchaseInvoiceLine,
+    Supplier,
+)
 
 
 class PurchaseInvoiceViewTests(TestCase):
@@ -302,6 +308,43 @@ class PurchaseInvoiceViewTests(TestCase):
 
         response = self.client.post(
             reverse("purchases:refresh_supplier", args=(self.invoice.pk,))
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(PURCHASES_AI_ENABLED=True)
+    def test_operator_can_start_ai_analysis(self):
+        self.invoice.paperless_document_id = 7890
+        self.invoice.save(update_fields=("paperless_document_id", "updated_at"))
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        response = self.client.post(
+            reverse("purchases:analyze_ai", args=(self.invoice.pk,))
+        )
+
+        self.assertRedirects(response, reverse("purchases:update", args=(self.invoice.pk,)))
+        job = PurchaseInvoiceAnalysisJob.objects.get(invoice=self.invoice)
+        self.assertEqual(job.status, PurchaseInvoiceAnalysisJob.Status.PENDING)
+        self.assertEqual(job.requested_by, self.users[CompanyMembership.Role.OPERATOR])
+        self.assertEqual(job.model_name, "qwen2.5vl:3b")
+
+    def test_ai_analysis_is_rejected_when_local_engine_is_disabled(self):
+        self.invoice.paperless_document_id = 7890
+        self.invoice.save(update_fields=("paperless_document_id", "updated_at"))
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        response = self.client.post(
+            reverse("purchases:analyze_ai", args=(self.invoice.pk,)), follow=True
+        )
+
+        self.assertContains(response, "L’analyse IA locale n’est pas activée")
+        self.assertFalse(PurchaseInvoiceAnalysisJob.objects.filter(invoice=self.invoice).exists())
+
+    def test_viewer_cannot_start_ai_analysis(self):
+        self.login(CompanyMembership.Role.VIEWER)
+
+        response = self.client.post(
+            reverse("purchases:analyze_ai", args=(self.invoice.pk,))
         )
 
         self.assertEqual(response.status_code, 403)

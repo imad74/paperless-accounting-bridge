@@ -11,6 +11,7 @@ from .extraction import PurchaseInvoiceExtractor, ice_digits, is_same_ice
 from .models import (
     InvoiceNature,
     PurchaseInvoice,
+    PurchaseInvoiceAnalysisJob,
     PurchaseInvoiceLine,
     PurchaseInvoiceTaxSummary,
     Supplier,
@@ -31,6 +32,11 @@ def plausible_amount(value):
         return value if abs(value) <= _LIMIT_2_DECIMALS else None
     except (TypeError, InvalidOperation):
         return None
+
+
+def plausible_nonnegative_amount(value):
+    value = plausible_amount(value)
+    return value if value is not None and value >= 0 else None
 
 
 def line_fits_database(line):
@@ -56,6 +62,16 @@ def extractor_for_company(company):
         excluded_ices=[company.ice] if getattr(company, "ice", "") else [],
         excluded_names=[company.name] if getattr(company, "name", "") else [],
         own_bank_accounts=getattr(settings, "PURCHASES_OWN_BANK_ACCOUNTS", ()),
+    )
+
+
+def ai_extractor_for_company(company):
+    """Extracteur visuel du PDF, chargé à la demande pour garder l'IA facultative."""
+    from .ai_extraction import OllamaInvoiceExtractor
+
+    return OllamaInvoiceExtractor(
+        excluded_ices=[company.ice] if getattr(company, "ice", "") else [],
+        excluded_names=[company.name] if getattr(company, "name", "") else [],
     )
 
 
@@ -163,10 +179,22 @@ class PurchaseInvoiceImportService:
 
     def analyse(self, *, company, paperless_document):
         """Extraction sans enregistrement : renvoie (données extraites, fournisseur, nature)."""
-        extracted = self._extractor(company).extract(
-            paperless_document.content,
-            title=paperless_document.title,
-        )
+        if (
+            self.extractor is None
+            and getattr(settings, "PURCHASES_AI_ENABLED", False)
+            and getattr(settings, "PURCHASES_EXTRACTION_ENGINE", "rules") == "ollama"
+        ):
+            extracted = ai_extractor_for_company(company).extract_document(
+                pdf_bytes=self.client.download_pdf(paperless_document.id),
+                text=paperless_document.content,
+                title=paperless_document.title,
+                page_count=paperless_document.page_count,
+            ).extracted
+        else:
+            extracted = self._extractor(company).extract(
+                paperless_document.content,
+                title=paperless_document.title,
+            )
         supplier = find_matching_supplier(
             company=company,
             name=extracted.supplier_name,
@@ -236,14 +264,31 @@ class PurchaseInvoiceImportService:
             paperless_title=paperless_document.title,
             original_filename=paperless_document.original_filename,
             invoice_number=extracted.invoice_number,
+            purchase_order_number=extracted.purchase_order_number,
             invoice_date=extracted.invoice_date,
             due_date=extracted.due_date
             if not (extracted.due_date and extracted.invoice_date and extracted.due_date < extracted.invoice_date)
             else None,
             currency=extracted.currency,
+            supplier_address_raw=extracted.supplier_address,
+            supplier_contact_raw=extracted.supplier_contact,
+            supplier_if_raw=extracted.supplier_if,
+            supplier_rc_raw=extracted.supplier_rc,
+            buyer_name_raw=extracted.buyer_name,
+            buyer_tax_id_raw=extracted.buyer_tax_id,
+            billing_address_raw=extracted.billing_address,
+            delivery_address_raw=extracted.delivery_address,
+            subtotal_ht=plausible_amount(extracted.subtotal_ht),
+            discount_amount=plausible_nonnegative_amount(extracted.discount_amount) or Decimal("0"),
+            shipping_amount=plausible_nonnegative_amount(extracted.shipping_amount) or Decimal("0"),
             net_ht=plausible_amount(extracted.net_ht),
             tax_amount=plausible_amount(extracted.tax_amount),
             total_ttc=plausible_amount(extracted.total_ttc),
+            amount_due=plausible_amount(extracted.amount_due),
+            payment_method=extracted.payment_method,
+            payment_terms=extracted.payment_terms,
+            supplier_iban=extracted.supplier_iban,
+            supplier_swift=extracted.supplier_swift,
             nature=nature,
             status=PurchaseInvoice.Status.TO_REVIEW,
             extraction_method=PurchaseInvoice.ExtractionMethod.PAPERLESS_OCR,
@@ -274,3 +319,131 @@ class PurchaseInvoiceImportService:
         )
         rebuild_tax_summaries(invoice)
         return invoice, True
+
+
+def _invoice_values_from_extraction(extracted):
+    return {
+        "supplier_name_raw": extracted.supplier_name,
+        "supplier_ice_raw": extracted.supplier_ice,
+        "invoice_number": extracted.invoice_number,
+        "purchase_order_number": extracted.purchase_order_number,
+        "invoice_date": extracted.invoice_date,
+        "due_date": (
+            extracted.due_date
+            if not (
+                extracted.due_date
+                and extracted.invoice_date
+                and extracted.due_date < extracted.invoice_date
+            )
+            else None
+        ),
+        "currency": extracted.currency,
+        "supplier_address_raw": extracted.supplier_address,
+        "supplier_contact_raw": extracted.supplier_contact,
+        "supplier_if_raw": extracted.supplier_if,
+        "supplier_rc_raw": extracted.supplier_rc,
+        "buyer_name_raw": extracted.buyer_name,
+        "buyer_tax_id_raw": extracted.buyer_tax_id,
+        "billing_address_raw": extracted.billing_address,
+        "delivery_address_raw": extracted.delivery_address,
+        "subtotal_ht": plausible_amount(extracted.subtotal_ht),
+        "discount_amount": plausible_nonnegative_amount(extracted.discount_amount) or Decimal("0"),
+        "shipping_amount": plausible_nonnegative_amount(extracted.shipping_amount) or Decimal("0"),
+        "net_ht": plausible_amount(extracted.net_ht),
+        "tax_amount": plausible_amount(extracted.tax_amount),
+        "total_ttc": plausible_amount(extracted.total_ttc),
+        "amount_due": plausible_amount(extracted.amount_due),
+        "payment_method": extracted.payment_method,
+        "payment_terms": extracted.payment_terms,
+        "supplier_iban": extracted.supplier_iban,
+        "supplier_swift": extracted.supplier_swift,
+        "nature": extracted.nature if extracted.nature in InvoiceNature.values else InvoiceNature.UNKNOWN,
+        "extraction_confidence": extracted.confidence,
+        "extraction_notes": extracted.notes,
+    }
+
+
+@transaction.atomic
+def apply_ai_extraction(invoice, extracted):
+    """Remplace les champs OCR et les lignes par un résultat IA à contrôler."""
+    supplier = find_matching_supplier(
+        company=invoice.company,
+        name=extracted.supplier_name,
+        ice=extracted.supplier_ice,
+    )
+    for field, value in _invoice_values_from_extraction(extracted).items():
+        setattr(invoice, field, value)
+    invoice.supplier = supplier
+    invoice.extraction_method = PurchaseInvoice.ExtractionMethod.AI_PDF
+    invoice.status = PurchaseInvoice.Status.TO_REVIEW
+    invoice.validated_by = None
+    invoice.validated_at = None
+    invoice.save()
+    invoice.lines.all().delete()
+    PurchaseInvoiceLine.objects.bulk_create(
+        PurchaseInvoiceLine(
+            invoice=invoice,
+            position=position,
+            reference=getattr(line, "reference", ""),
+            description=line.description,
+            quantity=line.quantity,
+            unit=getattr(line, "unit", ""),
+            unit_price_ht=line.unit_price_ht,
+            discount_percent=getattr(line, "discount_percent", 0),
+            tax_rate=line.tax_rate,
+            total_ht=line.total_ht,
+            tax_amount=line.tax_amount,
+            total_ttc=line.total_ttc,
+            source_text=line.source_text,
+            extraction_confidence=line.confidence,
+        )
+        for position, line in enumerate(
+            (line for line in extracted.lines if line_fits_database(line)), start=1
+        )
+    )
+    rebuild_tax_summaries(invoice)
+    return invoice
+
+
+def reanalyze_invoice_with_ai(invoice, *, client=None, extractor=None):
+    """Relit le PDF Paperless par IA puis remet la facture en validation humaine."""
+    if not invoice.paperless_document_id:
+        from .ai_extraction import AiExtractionError
+
+        raise AiExtractionError("Cette facture n’est pas liée à un document Paperless.")
+    client = client or PaperlessApiClient()
+    document = client.get_document(invoice.paperless_document_id)
+    extractor = extractor or ai_extractor_for_company(invoice.company)
+    result = extractor.extract_document(
+        pdf_bytes=client.download_pdf(document.id),
+        text=document.content,
+        title=document.title,
+        page_count=document.page_count,
+    )
+    apply_ai_extraction(invoice, result.extracted)
+    return result
+
+
+@transaction.atomic
+def queue_ai_analysis(invoice, *, requested_by=None):
+    """Place une facture dans la file locale, sans bloquer la requête web."""
+    if not getattr(settings, "PURCHASES_AI_ENABLED", False):
+        from .ai_extraction import AiExtractionError
+
+        raise AiExtractionError("L’analyse IA locale n’est pas activée.")
+    if not invoice.paperless_document_id:
+        from .ai_extraction import AiExtractionError
+
+        raise AiExtractionError("Cette facture n’est pas liée à un document Paperless.")
+    job, _created = PurchaseInvoiceAnalysisJob.objects.update_or_create(
+        invoice=invoice,
+        defaults={
+            "status": PurchaseInvoiceAnalysisJob.Status.PENDING,
+            "requested_by": requested_by,
+            "model_name": getattr(settings, "OLLAMA_MODEL", "qwen2.5vl:3b"),
+            "error_message": "",
+            "started_at": None,
+            "finished_at": None,
+        },
+    )
+    return job

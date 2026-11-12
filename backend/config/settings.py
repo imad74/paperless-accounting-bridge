@@ -183,6 +183,14 @@ DOCUMENT_PDF_MAX_BYTES = env_int(
 PAPERLESS_API_URL = os.getenv("PAPERLESS_API_URL", "").strip().rstrip("/")
 PAPERLESS_API_TOKEN = os.getenv("PAPERLESS_API_TOKEN", "").strip()
 PAPERLESS_API_TIMEOUT = env_int("PAPERLESS_API_TIMEOUT", 15)
+
+# Extraction locale des factures par IA (Ollama, aucun document envoyé dehors).
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ollama:11434").strip().rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:3b").strip()
+OLLAMA_TIMEOUT = env_int("OLLAMA_TIMEOUT", 900)
+OLLAMA_MAX_PAGES = env_int("OLLAMA_MAX_PAGES", 10)
+PURCHASES_AI_ENABLED = env_bool("PURCHASES_AI_ENABLED", False)
+PURCHASES_EXTRACTION_ENGINE = os.getenv("PURCHASES_EXTRACTION_ENGINE", "rules").strip().lower()
 # Comptes bancaires de la société (RIB/IBAN, séparés par des virgules) :
 # une facture qui les mentionne comme compte à créditer est une facture de vente.
 PURCHASES_OWN_BANK_ACCOUNTS = tuple(
