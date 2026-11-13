@@ -7,8 +7,8 @@ from django.test import TestCase
 from companies.models import Company
 from documents.paperless_api import PaperlessDocument
 from purchases.extraction import ExtractedInvoiceLine, ExtractedPurchaseInvoice
-from purchases.models import PurchaseInvoice, Supplier
-from purchases.services import PurchaseInvoiceImportService
+from purchases.models import PurchaseInvoice, PurchaseInvoiceLine, Supplier
+from purchases.services import PurchaseInvoiceImportService, apply_ai_extraction
 
 
 class PurchaseInvoiceImportServiceTests(TestCase):
@@ -55,6 +55,17 @@ class PurchaseInvoiceImportServiceTests(TestCase):
             ),
             confidence=Decimal("70"),
             notes="À vérifier.",
+            purchase_order_number="BC-99",
+            supplier_address="Zone industrielle, Marrakech",
+            buyer_name="Import",
+            buyer_tax_id="009999999999999",
+            subtotal_ht=Decimal("125"),
+            discount_amount=Decimal("5"),
+            shipping_amount=Decimal("0"),
+            amount_due=Decimal("144"),
+            payment_method="Virement",
+            payment_terms="30 jours",
+            supplier_iban="MA64011519000001205000534921",
         )
         service = PurchaseInvoiceImportService(client=client, extractor=extractor)
 
@@ -68,8 +79,66 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         self.assertEqual(invoice.supplier, supplier)
         self.assertEqual(invoice.supplier_name_raw, "EVENT PRINT")
         self.assertEqual(invoice.supplier_ice_raw, "001234567890123")
+        self.assertEqual(invoice.purchase_order_number, "BC-99")
+        self.assertEqual(invoice.supplier_address_raw, "Zone industrielle, Marrakech")
+        self.assertEqual(invoice.buyer_name_raw, "Import")
+        self.assertEqual(invoice.subtotal_ht, Decimal("125"))
+        self.assertEqual(invoice.discount_amount, Decimal("5"))
+        self.assertEqual(invoice.amount_due, Decimal("144"))
+        self.assertEqual(invoice.payment_method, "Virement")
         self.assertEqual(invoice.raw_ocr_text, "Texte OCR")
         self.assertEqual(invoice.lines.count(), 1)
         self.assertEqual(invoice.tax_summaries.count(), 1)
         self.assertEqual(invoice.tax_summaries.get().taxable_amount, Decimal("120"))
         client.get_document.assert_called_once_with(7890)
+
+    def test_ai_result_replaces_fields_and_lines_for_human_review(self):
+        company = Company.objects.create(code="AI", name="Acheteur IA")
+        invoice = PurchaseInvoice.objects.create(
+            company=company,
+            paperless_document_id=91,
+            invoice_number="ancien",
+            status=PurchaseInvoice.Status.VALIDATED,
+        )
+        PurchaseInvoiceLine.objects.create(
+            invoice=invoice,
+            position=1,
+            description="ancienne ligne",
+        )
+        extracted = ExtractedPurchaseInvoice(
+            supplier_name="NOUVEAU FOURNISSEUR",
+            supplier_ice="001234567890123",
+            invoice_number="F-2026-91",
+            invoice_date=date(2026, 11, 1),
+            due_date=date(2026, 12, 1),
+            currency="MAD",
+            net_ht=Decimal("100"),
+            tax_amount=Decimal("20"),
+            total_ttc=Decimal("120"),
+            lines=(ExtractedInvoiceLine(
+                description="Article IA",
+                quantity=Decimal("2"),
+                unit_price_ht=Decimal("50"),
+                total_ht=Decimal("100"),
+                tax_rate=Decimal("20"),
+                tax_amount=Decimal("20"),
+                total_ttc=Decimal("120"),
+                source_text="(lu par l’IA)",
+                confidence=Decimal("90"),
+            ),),
+            confidence=Decimal("90"),
+            notes="Extraction IA.",
+            purchase_order_number="BC-91",
+            delivery_address="Entrepôt",
+            amount_due=Decimal("120"),
+        )
+
+        apply_ai_extraction(invoice, extracted)
+
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.extraction_method, PurchaseInvoice.ExtractionMethod.AI_PDF)
+        self.assertEqual(invoice.status, PurchaseInvoice.Status.TO_REVIEW)
+        self.assertEqual(invoice.invoice_number, "F-2026-91")
+        self.assertEqual(invoice.purchase_order_number, "BC-91")
+        self.assertEqual(invoice.delivery_address_raw, "Entrepôt")
+        self.assertEqual(invoice.lines.get().description, "Article IA")

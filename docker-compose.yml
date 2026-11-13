@@ -95,6 +95,51 @@ services:
         source: ${PAPERLESS_CONSUME_HOST_PATH:-./paperless-consume}
         target: /scan/paperless-consume
 
+  ollama:
+    profiles: ["local-ai"]
+    image: ollama/ollama:0.40.16
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ai-worker:
+    profiles: ["local-ai"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PAB_UID: ${PAB_UID:-999}
+        PAB_GID: ${PAB_GID:-999}
+    init: true
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    command: python backend/manage.py process_invoice_ai_jobs
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-change-me}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
+      DB_NAME: ${DB_NAME:-paperless}
+      DB_USER: ${DB_USER:-paperless}
+      DB_PASSWORD: ${DB_PASSWORD:-paperless}
+      DB_HOST: db
+      DB_PORT: 5432
+      OLLAMA_API_URL: ${OLLAMA_API_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
+      PURCHASES_AI_ENABLED: ${PURCHASES_AI_ENABLED:-False}
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - media_data:/app/backend/media
+
 volumes:
   postgres_data:
   media_data:
+  ollama_data:

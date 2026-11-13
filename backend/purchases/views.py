@@ -12,6 +12,7 @@ from accounts.mixins import ActiveCompanyQuerysetMixin, CompanyPermissionRequire
 from accounts.permissions import CompanyPermission, role_has_permission
 from documents.paperless_api import PaperlessApiError
 
+from .ai_extraction import AiExtractionError
 from .forms import (
     PaperlessInvoiceImportForm,
     PurchaseInvoiceForm,
@@ -22,6 +23,7 @@ from .models import InvoiceNature, PurchaseInvoice, Supplier
 from .services import (
     PurchaseInvoiceImportService,
     rebuild_tax_summaries,
+    queue_ai_analysis,
     refresh_supplier_identity,
 )
 
@@ -93,7 +95,7 @@ class PurchaseInvoiceImportView(CompanyPermissionRequiredMixin, FormView):
                 company=self.active_company,
                 paperless_document_id=form.cleaned_data["paperless_document_id"],
             )
-        except PaperlessApiError as error:
+        except (PaperlessApiError, AiExtractionError) as error:
             form.add_error("paperless_document_id", str(error))
             return self.form_invalid(form)
 
@@ -146,6 +148,8 @@ class PurchaseInvoiceUpdateView(
             CompanyPermission.ARCHIVE_DOCUMENTS,
         )
         context["paperless_url"] = settings.PAPERLESS_API_URL.rstrip("/")
+        context["ai_extraction_available"] = settings.PURCHASES_AI_ENABLED
+        context["ai_job"] = getattr(self.object, "ai_analysis_job", None)
         return context
 
     def form_valid(self, form):
@@ -233,6 +237,31 @@ class PurchaseInvoiceRefreshSupplierView(
             messages.info(
                 request,
                 "Aucune nouvelle identité fournisseur fiable n’a été reconnue. Complétez les champs manuellement.",
+            )
+        return redirect("purchases:update", pk=invoice.pk)
+
+
+class PurchaseInvoiceAnalyzeAiView(
+    CompanyPermissionRequiredMixin,
+    ActiveCompanyQuerysetMixin,
+    UpdateView,
+):
+    model = PurchaseInvoice
+    fields = ()
+    http_method_names = ("post", "options")
+    required_company_permission = CompanyPermission.CHANGE_DOCUMENTS
+
+    def post(self, request, *args, **kwargs):
+        invoice = self.get_object()
+        try:
+            job = queue_ai_analysis(invoice, requested_by=request.user)
+        except AiExtractionError as error:
+            messages.error(request, f"Mise en file impossible : {error}")
+        else:
+            messages.success(
+                request,
+                f"Analyse locale mise en attente avec {job.model_name}. "
+                "Vous pouvez quitter cette page ; le traitement continue en arrière-plan.",
             )
         return redirect("purchases:update", pk=invoice.pk)
 

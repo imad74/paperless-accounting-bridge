@@ -199,6 +199,24 @@ class PaperlessApiClient:
             )
         return payload
 
+    def download_pdf(self, document_id, *, original=False):
+        """Contenu PDF d'un document (version archivée avec couche OCR, ou originale)."""
+        url = f"{self.base_url}/api/documents/{int(document_id)}/download/"
+        if original:
+            url += "?original=true"
+        request = Request(url, headers={"Authorization": f"Token {self.token}"})
+        try:
+            with self.urlopen(request, timeout=max(self.timeout, 60)) as response:
+                return response.read()
+        except HTTPError as error:
+            raise PaperlessApiError(
+                f"Paperless a répondu avec l’erreur HTTP {error.code} au téléchargement."
+            ) from error
+        except (URLError, OSError, TimeoutError) as error:
+            raise PaperlessApiError(
+                "Paperless est temporairement inaccessible."
+            ) from error
+
     def _deserialize_document(self, item):
         if not isinstance(item, dict) or "id" not in item:
             raise PaperlessApiError(

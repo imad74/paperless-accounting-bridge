@@ -24,6 +24,30 @@ compris chaque ligne d’article ou de service, sans modifier le PDF source.
 4. Un opérateur corrige et marque chaque ligne comme vérifiée.
 5. Un administrateur ou gestionnaire valide la facture.
 
+## Extraction intelligente du PDF
+
+L’extraction visuelle par IA est facultative. Contrairement à l’extracteur OCR
+à règles, elle lit la mise en page du PDF et renvoie une structure imposée :
+
+- identification de la facture, dates et bon de commande ;
+- fournisseur et acheteur, ICE, IF, RC, adresses et coordonnées ;
+- chaque ligne avec référence, désignation, quantité, unité, prix, remise et TVA ;
+- sous-total, remise globale, livraison, HT, TVA, TTC et montant à payer ;
+- mode et conditions de paiement, RIB/IBAN et SWIFT/BIC.
+
+Elle utilise Ollama et le modèle visuel local `qwen2.5vl:3b`, sans clé API ni
+abonnement. Elle peut être utilisée facture par facture depuis le bouton
+**Analyser le PDF par IA**. Pour les nouveaux imports, définir
+`PURCHASES_AI_ENABLED=True` puis `PURCHASES_EXTRACTION_ENGINE=ollama`; la valeur
+par défaut `rules` conserve le comportement OCR à règles. Une file PostgreSQL
+et le conteneur `ai-worker` exécutent les analyses en arrière-plan. Une tâche
+interrompue est remise en attente au redémarrage du worker.
+
+Le PDF reste dans le réseau Docker du VPS : ses pages sont converties en images
+par PAB puis envoyées au conteneur Ollama local.
+Après l’analyse, la facture repasse toujours à l’état **À vérifier** et les
+lignes ne sont jamais marquées comme vérifiées automatiquement.
+
 La validation est refusée si le fournisseur, le numéro ou la date manquent,
 si une ligne n’est pas vérifiée, ou si les sommes des lignes ne correspondent
 pas aux totaux HT, TVA et TTC avec une tolérance de deux centimes.
@@ -45,3 +69,24 @@ python backend/manage.py check
 
 Le compte API Paperless configuré dans `PAPERLESS_API_TOKEN` doit disposer du
 droit de lecture sur les documents à importer.
+
+Le moteur local se prépare avec :
+
+```bash
+docker compose --profile local-ai up -d ollama
+docker compose --profile local-ai exec ollama ollama pull qwen2.5vl:3b
+docker compose --profile local-ai up -d ai-worker
+```
+
+Configuration minimale dans `.env` :
+
+```dotenv
+PURCHASES_AI_ENABLED=True
+OLLAMA_API_URL=http://ollama:11434
+OLLAMA_MODEL=qwen2.5vl:3b
+PURCHASES_EXTRACTION_ENGINE=rules
+```
+
+Conserver `rules` pendant la phase de comparaison. Le passage à `ollama` pour
+les imports automatiques ne doit intervenir qu’après validation d’un échantillon
+représentatif de factures.
