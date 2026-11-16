@@ -45,6 +45,9 @@ cette réconciliation lorsque la relation `HT + TVA = TTC` permet de la prouver.
 L'analyse inspecte explicitement le pied de page des factures marocaines pour
 extraire la raison sociale, l'ICE, l'IF, la taxe professionnelle (TP), le RC et
 l'adresse du fournisseur sans les confondre avec les données de l'acheteur.
+Les montants de TVA imprimés sur chaque ligne sont prioritaires pour retrouver
+le vrai taux fiscal et réconcilier les totaux HT, TVA et TTC. Les paiements déjà
+effectués sont également distingués du montant restant à payer.
 
 Elle utilise Ollama et le modèle visuel local `qwen2.5vl:3b`, sans clé API ni
 abonnement. Elle peut être utilisée facture par facture depuis le bouton
