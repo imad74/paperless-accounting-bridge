@@ -109,6 +109,7 @@ INVOICE_SCHEMA = {
             "type": "object",
             "properties": {
                 "method": _TEXT,
+                "amount_paid": _NUMBER,
                 "terms": _TEXT,
                 "iban_or_rib": _TEXT,
                 "swift_or_bic": _TEXT,
@@ -144,6 +145,10 @@ INVOICE_SCHEMA = {
                     "unit_price_ttc": _NUMBER,
                     "discount_percent": _NUMBER,
                     "tax_rate": {"type": ["number", "null"], "description": "Taux de TVA en %, ex. 20."},
+                    "tax_amount": {
+                        "type": ["number", "null"],
+                        "description": "Montant de TVA imprimé pour cette ligne, ex. 99.83.",
+                    },
                     "total_ht": _NUMBER,
                     "total_ttc": _NUMBER,
                 },
@@ -153,6 +158,7 @@ INVOICE_SCHEMA = {
                     "price_basis",
                     "unit_price_ht",
                     "unit_price_ttc",
+                    "tax_amount",
                     "total_ht",
                     "total_ttc",
                 ],
@@ -180,7 +186,9 @@ Règles :
 - Les nombres sont au format décimal avec un point (1 234,56 devient 1234.56).
 - Lis d'abord l'en-tête exact des colonnes de prix. « TTC », « P.U TTC », « Prix TTC » ou « Montant TTC » signifie price_basis=TTC ; ne recopie jamais ce montant dans un champ HT.
 - Si la facture n'indique que des prix TTC, renseigne unit_price_ttc et total_ttc, puis calcule unit_price_ht et total_ht avec le taux de TVA indiqué. Pour une TVA de 20 %, HT = TTC / 1,20.
+- Si une ligne indique par exemple « TVA2 (20% / MAD99.83) », tax_rate vaut 20 et tax_amount vaut 99.83. Ne calcule jamais le taux par TVA / TTC : 99.83 / 599 = 16,67 % n'est pas le taux fiscal.
 - Si les colonnes sont explicitement HT, utilise price_basis=HT. Si aucun en-tête ne permet de décider, utilise INCONNU et signale le doute dans warnings.
+- Le montant libellé « TOTAL » est le total TTC. Le montant « A PAYER », « NET A PAYER » ou « RESTE A PAYER » est amount_due. Une ligne « Carte Crédit 879 » est un paiement effectué (payment.amount_paid=879), pas le montant restant dû. Si « A PAYER 0,00 » est imprimé, amount_due vaut impérativement 0.
 - Si une même ligne est répartie sur plusieurs lignes de texte, réunis-la en une seule ligne.
 - Vérifie que quantité × prix unitaire HT (après remise) = total HT de la ligne, et que la somme des lignes correspond au total HT. Signale toute incohérence dans warnings.
 - Un ticket de caisse est un document de type « ticket » ; ses lignes sont à extraire comme celles d'une facture.
@@ -400,6 +408,43 @@ class OllamaInvoiceExtractor:
                 "les lignes ont été reconverties en HT avec leur taux de TVA."
             )
 
+        header_from_lines = False
+        if not data.get("is_sale_invoice"):
+            net_ht, tax_amount, total_ttc, header_from_lines = self._reconcile_header_from_lines(
+                lines,
+                net_ht=net_ht,
+                tax_amount=tax_amount,
+                total_ttc=total_ttc,
+                amount_due=amount_due,
+            )
+        if header_from_lines:
+            notes.append(
+                "Les totaux d’en-tête incohérents ont été recalculés à partir des "
+                "montants HT, TVA et TTC imprimés sur les lignes."
+            )
+        amount_paid = _decimal(payment.get("amount_paid"))
+        if (
+            amount_paid is not None
+            and total_ttc is not None
+            and ZERO <= amount_paid <= total_ttc + Decimal("0.05")
+        ):
+            calculated_due = max(total_ttc - amount_paid, ZERO).quantize(
+                CENT,
+                rounding=ROUND_HALF_UP,
+            )
+            if amount_due is None or abs(amount_due - calculated_due) > Decimal("0.05"):
+                amount_due = calculated_due
+                notes.append(
+                    "Le montant à payer a été recalculé après déduction du paiement imprimé."
+                )
+        if (
+            subtotal_ht is None
+            and net_ht is not None
+            and (discount_amount or ZERO) == ZERO
+            and (shipping_amount or ZERO) == ZERO
+        ):
+            subtotal_ht = net_ht
+
         lines_total = sum((line.total_ht for line in lines), ZERO)
         balanced = bool(lines) and net_ht is not None and abs(lines_total - net_ht) <= Decimal("0.05")
         totals_ok = None not in (net_ht, tax_amount, total_ttc) and abs(net_ht + tax_amount - total_ttc) <= Decimal("0.05")
@@ -483,6 +528,7 @@ class OllamaInvoiceExtractor:
         quantity = _decimal(item.get("quantity"), Decimal("0.0001"))
         discount = _decimal(item.get("discount_percent")) or ZERO
         rate = _decimal(item.get("tax_rate"))
+        reported_tax = _decimal(item.get("tax_amount"))
         if rate is None:
             rate = invoice_rate if invoice_rate is not None else ZERO
         if not ZERO <= rate <= 100:
@@ -497,12 +543,29 @@ class OllamaInvoiceExtractor:
             quantity = Decimal(1)
 
         divisor = Decimal(1) + rate / 100
+        used_reported_tax = False
         if basis == "TTC":
             # Certains modèles recopient encore le montant TTC dans la clé HT :
             # les valeurs TTC explicites restent prioritaires, puis ce repli est corrigé.
             total_ttc = total_ttc if total_ttc is not None else total_ht
             unit_price_ttc = unit_price_ttc if unit_price_ttc is not None else unit_price
-            if total_ttc is not None:
+            if (
+                total_ttc is not None
+                and reported_tax is not None
+                and ZERO <= reported_tax < total_ttc
+            ):
+                total_ht = (total_ttc - reported_tax).quantize(
+                    CENT,
+                    rounding=ROUND_HALF_UP,
+                )
+                if total_ht > ZERO:
+                    rate = (reported_tax / total_ht * 100).quantize(
+                        Decimal("0.01"),
+                        rounding=ROUND_HALF_UP,
+                    )
+                    divisor = Decimal(1) + rate / 100
+                    used_reported_tax = True
+            elif total_ttc is not None:
                 total_ht = (total_ttc / divisor).quantize(CENT, rounding=ROUND_HALF_UP)
             if unit_price_ttc is not None:
                 unit_price = (unit_price_ttc / divisor).quantize(
@@ -526,7 +589,7 @@ class OllamaInvoiceExtractor:
             # reste visible dans l'écart entre la somme des lignes et le total HT.
             return None
         if basis == "TTC" and total_ttc is not None:
-            tax = total_ttc - total_ht
+            tax = reported_tax if used_reported_tax else total_ttc - total_ht
         else:
             tax = (total_ht * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
             total_ttc = total_ht + tax
@@ -540,7 +603,10 @@ class OllamaInvoiceExtractor:
             tax_rate=rate,
             tax_amount=tax,
             total_ttc=total_ttc,
-            source_text=f"(lu par l’IA ; base {basis})",
+            source_text=(
+                f"(lu par l’IA ; base {basis}"
+                f"{' ; TVA imprimée' if used_reported_tax else ''})"
+            ),
             confidence=Decimal(90) if consistent else Decimal(65),
             reference=" ".join(str(item.get("reference") or "").split())[:100],
             unit=" ".join(str(item.get("unit") or "").split())[:30],
@@ -592,3 +658,30 @@ class OllamaInvoiceExtractor:
         if not normal_is_valid and swapped_is_valid:
             return total_ttc, tax_amount, net_ht, True
         return net_ht, tax_amount, total_ttc, False
+
+    @staticmethod
+    def _reconcile_header_from_lines(lines, *, net_ht, tax_amount, total_ttc, amount_due):
+        """Répare un en-tête incohérent lorsque les lignes prouvent les trois totaux."""
+        if not lines or tax_amount is None:
+            return net_ht, tax_amount, total_ttc, False
+        tolerance = max(Decimal("0.05"), Decimal(len(lines)) * Decimal("0.02"))
+        lines_ht = sum((line.total_ht for line in lines), ZERO)
+        lines_tax = sum((line.tax_amount for line in lines), ZERO)
+        lines_ttc = sum((line.total_ttc for line in lines), ZERO)
+        lines_are_coherent = (
+            abs(lines_ht + lines_tax - lines_ttc) <= tolerance
+            and abs(lines_tax - tax_amount) <= tolerance
+        )
+        header_is_coherent = (
+            net_ht is not None
+            and total_ttc is not None
+            and abs(net_ht + tax_amount - total_ttc) <= tolerance
+        )
+        prominent_totals = (net_ht, total_ttc, amount_due)
+        line_ttc_is_printed_total = any(
+            value is not None and abs(lines_ttc - value) <= tolerance
+            for value in prominent_totals
+        )
+        if not lines_are_coherent or header_is_coherent or not line_ttc_is_printed_total:
+            return net_ht, tax_amount, total_ttc, False
+        return lines_ht, lines_tax, lines_ttc, True

@@ -58,6 +58,7 @@ def invoice_payload(**changes):
         },
         "payment": {
             "method": "Virement",
+            "amount_paid": 0,
             "terms": "30 jours",
             "iban_or_rib": "MA64011519000001205000534921",
             "swift_or_bic": "BCPOMAMC",
@@ -290,6 +291,74 @@ class OllamaExtractorTests(SimpleTestCase):
         )
         self.assertIn("totaux HT et TTC proposés étaient inversés", invoice.notes)
         self.assertNotIn("reconverties en HT", invoice.notes)
+
+    def test_printed_line_tax_repairs_wrong_rate_and_incoherent_header(self):
+        payload = invoice_payload(
+            totals={
+                "subtotal_ht": None,
+                "discount_amount": 0,
+                "shipping_amount": 0,
+                # Réponse réellement observée sur la facture MOFB.
+                "net_ht": 879,
+                "tax_amount": 146.50,
+                "total_ttc": 925.50,
+                "amount_due": 879,
+            },
+            payment={
+                "method": "Carte Crédit",
+                "amount_paid": 879,
+                "terms": None,
+                "iban_or_rib": None,
+                "swift_or_bic": None,
+            },
+            tax_breakdown=[{"rate": 16.67, "base": 753.40, "amount": 125.60}],
+            lines=[
+                {
+                    "reference": None,
+                    "description": "Manuka Honey 100MGO 250g Madhu",
+                    "quantity": 1,
+                    "unit": None,
+                    "price_basis": "TTC",
+                    "unit_price_ht": 513.4139,
+                    "unit_price_ttc": 599,
+                    "discount_percent": 0,
+                    "tax_rate": 16.67,
+                    "tax_amount": 99.83,
+                    "total_ht": 513.41,
+                    "total_ttc": 599,
+                },
+                {
+                    "reference": None,
+                    "description": "Kombucha 500ml Jun",
+                    "quantity": 4,
+                    "unit": None,
+                    "price_basis": "TTC",
+                    "unit_price_ht": 59.9983,
+                    "unit_price_ttc": 70,
+                    "discount_percent": 0,
+                    "tax_rate": 16.67,
+                    "tax_amount": 46.67,
+                    "total_ht": 239.99,
+                    "total_ttc": 280,
+                },
+            ],
+        )
+
+        invoice = extractor(fake_http(payload)).extract_document(text="texte").extracted
+
+        self.assertEqual(invoice.subtotal_ht, Decimal("732.50"))
+        self.assertEqual(invoice.net_ht, Decimal("732.50"))
+        self.assertEqual(invoice.tax_amount, Decimal("146.50"))
+        self.assertEqual(invoice.total_ttc, Decimal("879.00"))
+        self.assertEqual(invoice.amount_due, Decimal("0.00"))
+        self.assertEqual(invoice.lines[0].tax_rate, Decimal("20.00"))
+        self.assertEqual(invoice.lines[0].total_ht, Decimal("499.17"))
+        self.assertEqual(invoice.lines[0].tax_amount, Decimal("99.83"))
+        self.assertEqual(invoice.lines[1].tax_rate, Decimal("20.00"))
+        self.assertEqual(invoice.lines[1].total_ht, Decimal("233.33"))
+        self.assertEqual(invoice.lines[1].tax_amount, Decimal("46.67"))
+        self.assertIn("totaux d’en-tête incohérents", invoice.notes)
+        self.assertIn("paiement imprimé", invoice.notes)
 
     def test_sale_invoices_and_inconsistent_lines_are_flagged(self):
         payload = invoice_payload(is_sale_invoice=True, totals={"net_ht": 9999, "tax_amount": 500, "total_ttc": 3000})
