@@ -35,6 +35,11 @@ L’extraction visuelle par IA est facultative. Contrairement à l’extracteur 
 - sous-total, remise globale, livraison, HT, TVA, TTC et montant à payer ;
 - mode et conditions de paiement, RIB/IBAN et SWIFT/BIC.
 
+Les en-têtes de colonnes distinguent explicitement les prix HT des prix TTC.
+Une seconde vérification compare la somme des lignes aux totaux de la facture :
+si les montants lus correspondent au TTC au lieu du HT, ils sont reconvertis
+avec le taux de TVA et signalés dans les notes de contrôle.
+
 Elle utilise Ollama et le modèle visuel local `qwen2.5vl:3b`, sans clé API ni
 abonnement. Elle peut être utilisée facture par facture depuis le bouton
 **Analyser le PDF par IA**. Pour les nouveaux imports, définir

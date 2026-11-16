@@ -13,7 +13,7 @@ normalement le conteneur local du même Docker Compose.
 import base64
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
@@ -131,13 +131,30 @@ INVOICE_SCHEMA = {
                     "description": {"type": "string", "description": "Désignation recopiée telle qu'écrite sur la facture."},
                     "quantity": _NUMBER,
                     "unit": _TEXT,
+                    "price_basis": {
+                        "type": "string",
+                        "enum": ["HT", "TTC", "INCONNU"],
+                        "description": (
+                            "Base indiquée par l'en-tête de la colonne de prix : HT si la colonne est hors taxe, "
+                            "TTC si elle est toutes taxes comprises, INCONNU si aucun libellé ne permet de décider."
+                        ),
+                    },
                     "unit_price_ht": _NUMBER,
+                    "unit_price_ttc": _NUMBER,
                     "discount_percent": _NUMBER,
                     "tax_rate": {"type": ["number", "null"], "description": "Taux de TVA en %, ex. 20."},
                     "total_ht": _NUMBER,
                     "total_ttc": _NUMBER,
                 },
-                "required": ["description", "quantity", "unit_price_ht", "total_ht"],
+                "required": [
+                    "description",
+                    "quantity",
+                    "price_basis",
+                    "unit_price_ht",
+                    "unit_price_ttc",
+                    "total_ht",
+                    "total_ttc",
+                ],
             },
         },
         "warnings": {
@@ -158,7 +175,9 @@ Règles :
 - Le PDF peut contenir la facture puis un bon de livraison, un bon de commande ou d'autres pièces : n'extrais que les lignes de la facture, sans doublons.
 - Recopie chaque désignation telle qu'elle est écrite. Une ligne de remise ou de frais (livraison, transport) est une ligne à part.
 - Les nombres sont au format décimal avec un point (1 234,56 devient 1234.56).
-- Si la facture n'indique que des prix TTC, renseigne total_ttc et calcule unit_price_ht et total_ht hors taxe avec le taux de TVA indiqué.
+- Lis d'abord l'en-tête exact des colonnes de prix. « TTC », « P.U TTC », « Prix TTC » ou « Montant TTC » signifie price_basis=TTC ; ne recopie jamais ce montant dans un champ HT.
+- Si la facture n'indique que des prix TTC, renseigne unit_price_ttc et total_ttc, puis calcule unit_price_ht et total_ht avec le taux de TVA indiqué. Pour une TVA de 20 %, HT = TTC / 1,20.
+- Si les colonnes sont explicitement HT, utilise price_basis=HT. Si aucun en-tête ne permet de décider, utilise INCONNU et signale le doute dans warnings.
 - Si une même ligne est répartie sur plusieurs lignes de texte, réunis-la en une seule ligne.
 - Vérifie que quantité × prix unitaire HT (après remise) = total HT de la ligne, et que la somme des lignes correspond au total HT. Signale toute incohérence dans warnings.
 - Un ticket de caisse est un document de type « ticket » ; ses lignes sont à extraire comme celles d'une facture.
@@ -292,16 +311,16 @@ class OllamaInvoiceExtractor:
 
     def _render_pdf_pages(self, pdf_bytes):
         try:
-            import fitz
+            import pymupdf
 
-            with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
+            with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
                 if not len(document):
                     raise AiExtractionError("Le PDF ne contient aucune page.")
                 if len(document) > self.max_pages:
                     raise AiExtractionError(
                         f"Le PDF contient {len(document)} pages ; la limite locale est {self.max_pages}."
                     )
-                matrix = fitz.Matrix(1.5, 1.5)
+                matrix = pymupdf.Matrix(1.5, 1.5)
                 return [
                     page.get_pixmap(matrix=matrix, alpha=False).tobytes("png")
                     for page in document
@@ -351,6 +370,17 @@ class OllamaInvoiceExtractor:
             line = self._line(item, single_rate)
             if line is not None:
                 lines.append(line)
+
+        lines, reinterpreted_as_ttc = self._reconcile_ttc_lines(
+            lines,
+            net_ht=net_ht,
+            total_ttc=total_ttc,
+        )
+        if reinterpreted_as_ttc:
+            notes.append(
+                "La somme des montants de lignes correspondait au TTC et non au HT : "
+                "les lignes ont été reconverties en HT avec leur taux de TVA."
+            )
 
         lines_total = sum((line.total_ht for line in lines), ZERO)
         balanced = bool(lines) and net_ht is not None and abs(lines_total - net_ht) <= Decimal("0.05")
@@ -432,13 +462,42 @@ class OllamaInvoiceExtractor:
         if not description:
             return None
         quantity = _decimal(item.get("quantity"), Decimal("0.0001"))
-        unit_price = _decimal(item.get("unit_price_ht"), Decimal("0.0001"))
-        total_ht = _decimal(item.get("total_ht"))
         discount = _decimal(item.get("discount_percent")) or ZERO
+        rate = _decimal(item.get("tax_rate"))
+        if rate is None:
+            rate = invoice_rate if invoice_rate is not None else ZERO
+        if not ZERO <= rate <= 100:
+            rate = ZERO
+
+        basis = str(item.get("price_basis") or "INCONNU").strip().upper()
+        unit_price = _decimal(item.get("unit_price_ht"), Decimal("0.0001"))
+        unit_price_ttc = _decimal(item.get("unit_price_ttc"), Decimal("0.0001"))
+        total_ht = _decimal(item.get("total_ht"))
+        total_ttc = _decimal(item.get("total_ttc"))
         if quantity is None:
             quantity = Decimal(1)
-        if total_ht is None and unit_price is not None:
-            total_ht = (quantity * unit_price * (1 - discount / 100)).quantize(CENT)
+
+        divisor = Decimal(1) + rate / 100
+        if basis == "TTC":
+            # Certains modèles recopient encore le montant TTC dans la clé HT :
+            # les valeurs TTC explicites restent prioritaires, puis ce repli est corrigé.
+            total_ttc = total_ttc if total_ttc is not None else total_ht
+            unit_price_ttc = unit_price_ttc if unit_price_ttc is not None else unit_price
+            if total_ttc is not None:
+                total_ht = (total_ttc / divisor).quantize(CENT, rounding=ROUND_HALF_UP)
+            if unit_price_ttc is not None:
+                unit_price = (unit_price_ttc / divisor).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+        else:
+            if total_ht is None and total_ttc is not None:
+                total_ht = (total_ttc / divisor).quantize(CENT, rounding=ROUND_HALF_UP)
+            if unit_price is None and unit_price_ttc is not None:
+                unit_price = (unit_price_ttc / divisor).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+            if total_ht is None and unit_price is not None:
+                total_ht = (quantity * unit_price * (1 - discount / 100)).quantize(CENT)
         if unit_price is None and total_ht is not None and quantity:
             unit_price = (total_ht / quantity).quantize(Decimal("0.0001"))
         if total_ht is None or unit_price is None:
@@ -447,12 +506,11 @@ class OllamaInvoiceExtractor:
             # Les montants négatifs (remises) ne sont pas acceptés par la base : la remise
             # reste visible dans l'écart entre la somme des lignes et le total HT.
             return None
-        rate = _decimal(item.get("tax_rate"))
-        if rate is None:
-            rate = invoice_rate if invoice_rate is not None else ZERO
-        if not ZERO <= rate <= 100:
-            rate = ZERO
-        tax = (total_ht * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+        if basis == "TTC" and total_ttc is not None:
+            tax = total_ttc - total_ht
+        else:
+            tax = (total_ht * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+            total_ttc = total_ht + tax
         expected = (quantity * unit_price * (1 - discount / 100)).quantize(CENT)
         consistent = abs(expected - total_ht) <= max(Decimal("0.05"), total_ht * Decimal("0.01"))
         return ExtractedInvoiceLine(
@@ -462,10 +520,44 @@ class OllamaInvoiceExtractor:
             total_ht=total_ht,
             tax_rate=rate,
             tax_amount=tax,
-            total_ttc=total_ht + tax,
-            source_text="(lu par l’IA)",
+            total_ttc=total_ttc,
+            source_text=f"(lu par l’IA ; base {basis})",
             confidence=Decimal(90) if consistent else Decimal(65),
             reference=" ".join(str(item.get("reference") or "").split())[:100],
             unit=" ".join(str(item.get("unit") or "").split())[:30],
             discount_percent=discount if ZERO <= discount <= 100 else ZERO,
         )
+
+    @staticmethod
+    def _reconcile_ttc_lines(lines, *, net_ht, total_ttc):
+        """Corrige un tableau TTC que le modèle a placé dans les colonnes HT."""
+        if not lines or net_ht is None or total_ttc is None or net_ht == total_ttc:
+            return lines, False
+        lines_total = sum((line.total_ht for line in lines), ZERO)
+        tolerance = max(Decimal("0.05"), Decimal(len(lines)) * Decimal("0.02"))
+        matches_ttc = abs(lines_total - total_ttc) <= tolerance
+        matches_ht = abs(lines_total - net_ht) <= tolerance
+        if not matches_ttc or matches_ht:
+            return lines, False
+
+        corrected = []
+        for line in lines:
+            divisor = Decimal(1) + line.tax_rate / 100
+            corrected_total_ht = (line.total_ht / divisor).quantize(
+                CENT, rounding=ROUND_HALF_UP
+            )
+            corrected_unit_price = (line.unit_price_ht / divisor).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_UP
+            )
+            corrected.append(
+                replace(
+                    line,
+                    unit_price_ht=corrected_unit_price,
+                    total_ht=corrected_total_ht,
+                    tax_amount=line.total_ht - corrected_total_ht,
+                    total_ttc=line.total_ht,
+                    source_text=f"{line.source_text} ; montants TTC reconvertis en HT",
+                    confidence=min(line.confidence, Decimal(80)),
+                )
+            )
+        return corrected, True
