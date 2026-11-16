@@ -48,6 +48,7 @@ class PurchaseInvoiceForm(forms.ModelForm):
             "supplier_address_raw",
             "supplier_contact_raw",
             "supplier_if_raw",
+            "supplier_tp_raw",
             "supplier_rc_raw",
             "buyer_name_raw",
             "buyer_tax_id_raw",
@@ -88,6 +89,7 @@ class PurchaseInvoiceForm(forms.ModelForm):
             "supplier_address_raw": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "supplier_contact_raw": forms.TextInput(attrs={"class": "form-control"}),
             "supplier_if_raw": forms.TextInput(attrs={"class": "form-control"}),
+            "supplier_tp_raw": forms.TextInput(attrs={"class": "form-control"}),
             "supplier_rc_raw": forms.TextInput(attrs={"class": "form-control"}),
             "buyer_name_raw": forms.TextInput(attrs={"class": "form-control"}),
             "buyer_tax_id_raw": forms.TextInput(attrs={"class": "form-control"}),
@@ -230,6 +232,7 @@ class SupplierForm(forms.ModelForm):
             "name",
             "ice",
             "if_number",
+            "tp",
             "rc",
             "activity",
             "default_nature",
@@ -242,6 +245,7 @@ class SupplierForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "ice": forms.TextInput(attrs={"class": "form-control"}),
             "if_number": forms.TextInput(attrs={"class": "form-control"}),
+            "tp": forms.TextInput(attrs={"class": "form-control"}),
             "rc": forms.TextInput(attrs={"class": "form-control"}),
             "activity": forms.TextInput(
                 attrs={"class": "form-control", "list": "supplier-activities"}

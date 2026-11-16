@@ -39,6 +39,12 @@ Les en-têtes de colonnes distinguent explicitement les prix HT des prix TTC.
 Une seconde vérification compare la somme des lignes aux totaux de la facture :
 si les montants lus correspondent au TTC au lieu du HT, ils sont reconvertis
 avec le taux de TVA et signalés dans les notes de contrôle.
+Une inversion des totaux HT et TTC proposée par le modèle est corrigée avant
+cette réconciliation lorsque la relation `HT + TVA = TTC` permet de la prouver.
+
+L'analyse inspecte explicitement le pied de page des factures marocaines pour
+extraire la raison sociale, l'ICE, l'IF, la taxe professionnelle (TP), le RC et
+l'adresse du fournisseur sans les confondre avec les données de l'acheteur.
 
 Elle utilise Ollama et le modèle visuel local `qwen2.5vl:3b`, sans clé API ni
 abonnement. Elle peut être utilisée facture par facture depuis le bouton

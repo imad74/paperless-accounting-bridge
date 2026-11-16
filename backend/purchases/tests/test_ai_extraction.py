@@ -26,7 +26,16 @@ def invoice_payload(**changes):
         "document_type": "facture",
         "is_sale_invoice": False,
         "nature": "MARCHANDISES",
-        "supplier": {"name": "SMARTECOM INNOVATION", "ice": "002 964 777 000 077"},
+        "supplier": {
+            "name": "SMARTECOM INNOVATION",
+            "ice": "002 964 777 000 077",
+            "if_number": "20696805",
+            "tp": "45196125",
+            "rc": "77691",
+            "city": "Marrakech",
+            "address": "6 Boulevard Zerktouni 40000 Marrakech Maroc",
+            "contact": None,
+        },
         "buyer": {
             "name": "DELIGHT EVENT MANAGEMENT",
             "tax_id": "001443716000088",
@@ -109,6 +118,13 @@ class OllamaExtractorTests(SimpleTestCase):
 
         self.assertTrue(result.used_pdf)
         self.assertEqual(invoice.supplier_ice, "002964777000077")
+        self.assertEqual(invoice.supplier_if, "20696805")
+        self.assertEqual(invoice.supplier_tp, "45196125")
+        self.assertEqual(invoice.supplier_rc, "77691")
+        self.assertEqual(
+            invoice.supplier_address,
+            "6 Boulevard Zerktouni 40000 Marrakech Maroc",
+        )
         self.assertEqual(invoice.invoice_date, date(2026, 5, 14))
         self.assertEqual(len(invoice.lines), 2)
         self.assertEqual(invoice.lines[1].tax_rate, Decimal("20"))  # taux de la facture reporté
@@ -129,8 +145,10 @@ class OllamaExtractorTests(SimpleTestCase):
         request_payload = json.loads(request.data)
         self.assertEqual(request_payload["model"], "qwen2.5vl:3b")
         self.assertEqual(request_payload["format"], INVOICE_SCHEMA)
+        self.assertIn("tp", request_payload["format"]["properties"]["supplier"]["required"])
         self.assertEqual(len(request_payload["messages"][1]["images"]), 2)
         self.assertIn("001443716000088", request_payload["messages"][0]["content"])
+        self.assertIn("pied de page", request_payload["messages"][0]["content"])
 
     def test_buyer_ice_returned_by_the_model_is_rejected(self):
         payload = invoice_payload(supplier={"name": "DELIGHT EVENT MANAGEMENT", "ice": "001443716000088"})
@@ -212,6 +230,65 @@ class OllamaExtractorTests(SimpleTestCase):
         self.assertEqual(line.tax_amount, Decimal("20.00"))
         self.assertEqual(line.total_ttc, Decimal("120.00"))
         self.assertIn("reconverties en HT", invoice.notes)
+
+    def test_swapped_header_totals_are_fixed_before_ttc_line_reconciliation(self):
+        payload = invoice_payload(
+            totals={
+                "subtotal_ht": 732.50,
+                "discount_amount": 0,
+                "shipping_amount": 0,
+                # Réponse réellement observée : le modèle a interverti HT et TTC.
+                "net_ht": 879,
+                "tax_amount": 146.50,
+                "total_ttc": 732.50,
+                "amount_due": 0,
+            },
+            tax_breakdown=[{"rate": 20, "base": 732.50, "amount": 146.50}],
+            lines=[
+                {
+                    "reference": None,
+                    "description": "Manuka Honey 100MGO 250g Madhu",
+                    "quantity": 1,
+                    "unit": None,
+                    "price_basis": "TTC",
+                    "unit_price_ht": None,
+                    "unit_price_ttc": 599,
+                    "discount_percent": 0,
+                    "tax_rate": 20,
+                    "total_ht": None,
+                    "total_ttc": 599,
+                },
+                {
+                    "reference": None,
+                    "description": "Kombucha 500ml Jun",
+                    "quantity": 4,
+                    "unit": None,
+                    "price_basis": "TTC",
+                    "unit_price_ht": None,
+                    "unit_price_ttc": 70,
+                    "discount_percent": 0,
+                    "tax_rate": 20,
+                    "total_ht": None,
+                    "total_ttc": 280,
+                },
+            ],
+        )
+
+        invoice = extractor(fake_http(payload)).extract_document(text="texte").extracted
+
+        self.assertEqual(invoice.net_ht, Decimal("732.50"))
+        self.assertEqual(invoice.tax_amount, Decimal("146.50"))
+        self.assertEqual(invoice.total_ttc, Decimal("879.00"))
+        self.assertEqual(
+            sum((line.total_ht for line in invoice.lines), Decimal("0")),
+            Decimal("732.50"),
+        )
+        self.assertEqual(
+            sum((line.total_ttc for line in invoice.lines), Decimal("0")),
+            Decimal("879.00"),
+        )
+        self.assertIn("totaux HT et TTC proposés étaient inversés", invoice.notes)
+        self.assertNotIn("reconverties en HT", invoice.notes)
 
     def test_sale_invoices_and_inconsistent_lines_are_flagged(self):
         payload = invoice_payload(is_sale_invoice=True, totals={"net_ht": 9999, "tax_amount": 500, "total_ttc": 3000})
