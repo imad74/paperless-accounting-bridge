@@ -141,6 +141,78 @@ class OllamaExtractorTests(SimpleTestCase):
         self.assertEqual(invoice.supplier_name, "")
         self.assertIn("société acheteuse", invoice.notes)
 
+    def test_explicit_ttc_columns_are_converted_to_ht(self):
+        payload = invoice_payload(
+            totals={
+                "subtotal_ht": 100,
+                "discount_amount": 0,
+                "shipping_amount": 0,
+                "net_ht": 100,
+                "tax_amount": 20,
+                "total_ttc": 120,
+                "amount_due": 120,
+            },
+            tax_breakdown=[{"rate": 20, "base": 100, "amount": 20}],
+            lines=[{
+                "reference": "A-1",
+                "description": "Article vendu TTC",
+                "quantity": 2,
+                "unit": "U",
+                "price_basis": "TTC",
+                "unit_price_ht": None,
+                "unit_price_ttc": 60,
+                "discount_percent": 0,
+                "tax_rate": 20,
+                "total_ht": None,
+                "total_ttc": 120,
+            }],
+        )
+
+        invoice = extractor(fake_http(payload)).extract_document(text="texte").extracted
+        line = invoice.lines[0]
+
+        self.assertEqual(line.unit_price_ht, Decimal("50.0000"))
+        self.assertEqual(line.total_ht, Decimal("100.00"))
+        self.assertEqual(line.tax_amount, Decimal("20.00"))
+        self.assertEqual(line.total_ttc, Decimal("120.00"))
+        self.assertIn("base TTC", line.source_text)
+
+    def test_mislabeled_ttc_lines_are_reconciled_against_invoice_totals(self):
+        payload = invoice_payload(
+            totals={
+                "subtotal_ht": 100,
+                "discount_amount": 0,
+                "shipping_amount": 0,
+                "net_ht": 100,
+                "tax_amount": 20,
+                "total_ttc": 120,
+                "amount_due": 120,
+            },
+            tax_breakdown=[{"rate": 20, "base": 100, "amount": 20}],
+            lines=[{
+                "reference": "A-1",
+                "description": "Montant TTC mal classé",
+                "quantity": 2,
+                "unit": "U",
+                "price_basis": "INCONNU",
+                "unit_price_ht": 60,
+                "unit_price_ttc": None,
+                "discount_percent": 0,
+                "tax_rate": 20,
+                "total_ht": 120,
+                "total_ttc": None,
+            }],
+        )
+
+        invoice = extractor(fake_http(payload)).extract_document(text="texte").extracted
+        line = invoice.lines[0]
+
+        self.assertEqual(line.unit_price_ht, Decimal("50.0000"))
+        self.assertEqual(line.total_ht, Decimal("100.00"))
+        self.assertEqual(line.tax_amount, Decimal("20.00"))
+        self.assertEqual(line.total_ttc, Decimal("120.00"))
+        self.assertIn("reconverties en HT", invoice.notes)
+
     def test_sale_invoices_and_inconsistent_lines_are_flagged(self):
         payload = invoice_payload(is_sale_invoice=True, totals={"net_ht": 9999, "tax_amount": 500, "total_ttc": 3000})
 
