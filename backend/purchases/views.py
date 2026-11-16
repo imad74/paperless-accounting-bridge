@@ -304,7 +304,12 @@ def filtered_suppliers(request, company):
     validated = request.GET.get("validee", "").strip()
     if search:
         queryset = queryset.filter(
-            Q(name__icontains=search) | Q(ice__icontains=search) | Q(activity__icontains=search)
+            Q(name__icontains=search)
+            | Q(ice__icontains=search)
+            | Q(if_number__icontains=search)
+            | Q(tp__icontains=search)
+            | Q(rc__icontains=search)
+            | Q(activity__icontains=search)
         )
     if nature in InvoiceNature.values:
         queryset = queryset.filter(
@@ -417,7 +422,7 @@ class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
         sheet = workbook.active
         sheet.title = "Fournisseurs"
         headers = (
-            "Nom", "ICE", "IF", "RC", "Activité", "Nature retenue", "Nature validée",
+            "Nom", "ICE", "IF", "TP", "RC", "Activité", "Nature retenue", "Nature validée",
             "Nature détectée", "Validation", "Répartition détectée", "Documents Paperless",
             "Total TTC détecté (MAD)", "Première facture", "Dernière facture", "Ville", "Actif",
         )
@@ -430,6 +435,7 @@ class SupplierExportView(CompanyPermissionRequiredMixin, ListView):
                 supplier.name,
                 supplier.ice,
                 supplier.if_number,
+                supplier.tp,
                 supplier.rc,
                 supplier.activity,
                 labels.get(supplier.effective_nature, ""),

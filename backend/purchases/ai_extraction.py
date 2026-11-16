@@ -70,12 +70,13 @@ INVOICE_SCHEMA = {
                 "name": _TEXT,
                 "ice": {"type": ["string", "null"], "description": "ICE du FOURNISSEUR (15 chiffres), jamais celui du client."},
                 "if_number": _TEXT,
+                "tp": _TEXT,
                 "rc": _TEXT,
                 "city": _TEXT,
                 "address": _TEXT,
                 "contact": _TEXT,
             },
-            "required": ["name", "ice"],
+            "required": ["name", "ice", "if_number", "tp", "rc", "city", "address", "contact"],
         },
         "buyer": {
             "type": "object",
@@ -172,6 +173,8 @@ Tu enregistres les données avec l'outil fourni, sans rien inventer : une valeur
 
 Règles :
 - La société acheteuse (le client) est {buyer_name}, ICE {buyer_ice}. Son nom et son ICE ne sont JAMAIS ceux du fournisseur.
+- Examine toute la page jusqu'au pied de page. Au Maroc, la raison sociale et les identifiants légaux du fournisseur (ICE, IF, TP, RC) ainsi que son adresse sont souvent imprimés en très petits caractères dans le pied de page.
+- Si l'acheteur est identifié en haut et qu'une autre société figure dans le pied de page avec ICE/IF/TP/RC, cette société du pied de page est le fournisseur. Recopie tous ses identifiants sans les confondre avec ceux de l'acheteur.
 - Le PDF peut contenir la facture puis un bon de livraison, un bon de commande ou d'autres pièces : n'extrais que les lignes de la facture, sans doublons.
 - Recopie chaque désignation telle qu'elle est écrite. Une ligne de remise ou de frais (livraison, transport) est une ligne à part.
 - Les nombres sont au format décimal avec un point (1 234,56 devient 1234.56).
@@ -320,7 +323,10 @@ class OllamaInvoiceExtractor:
                     raise AiExtractionError(
                         f"Le PDF contient {len(document)} pages ; la limite locale est {self.max_pages}."
                     )
-                matrix = pymupdf.Matrix(1.5, 1.5)
+                # Le pied de page contient souvent les identifiants légaux en très petits
+                # caractères. Un rendu 2x reste raisonnable pour le modèle 3B et préserve
+                # assez de détails pour lire ICE, IF, TP, RC et adresse.
+                matrix = pymupdf.Matrix(2, 2)
                 return [
                     page.get_pixmap(matrix=matrix, alpha=False).tobytes("png")
                     for page in document
@@ -353,6 +359,16 @@ class OllamaInvoiceExtractor:
         net_ht = _decimal(totals.get("net_ht"))
         tax_amount = _decimal(totals.get("tax_amount"))
         total_ttc = _decimal(totals.get("total_ttc"))
+        net_ht, tax_amount, total_ttc, totals_swapped = self._normalize_header_totals(
+            net_ht,
+            tax_amount,
+            total_ttc,
+        )
+        if totals_swapped:
+            notes.append(
+                "Les totaux HT et TTC proposés étaient inversés ; ils ont été remis dans "
+                "l’ordre grâce à la relation HT + TVA = TTC."
+            )
         amount_due = _decimal(totals.get("amount_due"))
         buyer = data.get("buyer") or {}
         payment = data.get("payment") or {}
@@ -437,6 +453,7 @@ class OllamaInvoiceExtractor:
             supplier_address=self._text(supplier.get("address"), 2000),
             supplier_contact=self._text(supplier.get("contact"), 255),
             supplier_if=self._text(supplier.get("if_number"), 30),
+            supplier_tp=self._text(supplier.get("tp"), 30),
             supplier_rc=self._text(supplier.get("rc"), 30),
             buyer_name=self._text(buyer.get("name"), 255),
             buyer_tax_id=ice_digits(buyer.get("tax_id"))[:30],
@@ -561,3 +578,15 @@ class OllamaInvoiceExtractor:
                 )
             )
         return corrected, True
+
+    @staticmethod
+    def _normalize_header_totals(net_ht, tax_amount, total_ttc):
+        """Répare l'inversion HT/TTC si elle est prouvée par l'équation de TVA."""
+        if None in (net_ht, tax_amount, total_ttc):
+            return net_ht, tax_amount, total_ttc, False
+        tolerance = Decimal("0.05")
+        normal_is_valid = abs(net_ht + tax_amount - total_ttc) <= tolerance
+        swapped_is_valid = abs(total_ttc + tax_amount - net_ht) <= tolerance
+        if not normal_is_valid and swapped_is_valid:
+            return total_ttc, tax_amount, net_ht, True
+        return net_ht, tax_amount, total_ttc, False

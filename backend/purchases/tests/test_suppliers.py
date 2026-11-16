@@ -203,7 +203,8 @@ class SupplierViewTests(TestCase):
         sheet = load_workbook(BytesIO(response.content)).active
         names = [row[0] for row in sheet.iter_rows(min_row=2, values_only=True)]
         self.assertEqual(names, ["Transports Sud"])
-        self.assertEqual(sheet["F2"].value, "Prestation de service")
+        self.assertEqual(sheet["D1"].value, "TP")
+        self.assertEqual(sheet["G2"].value, "Prestation de service")
 
 
 class AutomaticNatureValidationTests(TestCase):

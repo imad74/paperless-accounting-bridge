@@ -57,6 +57,9 @@ class PurchaseInvoiceImportServiceTests(TestCase):
             notes="À vérifier.",
             purchase_order_number="BC-99",
             supplier_address="Zone industrielle, Marrakech",
+            supplier_if="12345678",
+            supplier_tp="87654321",
+            supplier_rc="99887",
             buyer_name="Import",
             buyer_tax_id="009999999999999",
             subtotal_ht=Decimal("125"),
@@ -81,6 +84,9 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         self.assertEqual(invoice.supplier_ice_raw, "001234567890123")
         self.assertEqual(invoice.purchase_order_number, "BC-99")
         self.assertEqual(invoice.supplier_address_raw, "Zone industrielle, Marrakech")
+        self.assertEqual(invoice.supplier_if_raw, "12345678")
+        self.assertEqual(invoice.supplier_tp_raw, "87654321")
+        self.assertEqual(invoice.supplier_rc_raw, "99887")
         self.assertEqual(invoice.buyer_name_raw, "Import")
         self.assertEqual(invoice.subtotal_ht, Decimal("125"))
         self.assertEqual(invoice.discount_amount, Decimal("5"))
@@ -129,6 +135,9 @@ class PurchaseInvoiceImportServiceTests(TestCase):
             confidence=Decimal("90"),
             notes="Extraction IA.",
             purchase_order_number="BC-91",
+            supplier_if="12345678",
+            supplier_tp="87654321",
+            supplier_rc="99887",
             delivery_address="Entrepôt",
             amount_due=Decimal("120"),
         )
@@ -140,5 +149,8 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         self.assertEqual(invoice.status, PurchaseInvoice.Status.TO_REVIEW)
         self.assertEqual(invoice.invoice_number, "F-2026-91")
         self.assertEqual(invoice.purchase_order_number, "BC-91")
+        self.assertEqual(invoice.supplier_if_raw, "12345678")
+        self.assertEqual(invoice.supplier_tp_raw, "87654321")
+        self.assertEqual(invoice.supplier_rc_raw, "99887")
         self.assertEqual(invoice.delivery_address_raw, "Entrepôt")
         self.assertEqual(invoice.lines.get().description, "Article IA")

@@ -72,6 +72,7 @@ class ExtractedPurchaseInvoice:
     supplier_contact: str = ""
     supplier_if: str = ""
     supplier_rc: str = ""
+    supplier_tp: str = ""
     buyer_name: str = ""
     buyer_tax_id: str = ""
     billing_address: str = ""

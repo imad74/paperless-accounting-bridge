@@ -36,6 +36,7 @@ class Supplier(models.Model):
     normalized_name = models.CharField(max_length=255, editable=False)
     ice = models.CharField(max_length=30, blank=True, db_index=True)
     if_number = models.CharField(max_length=30, blank=True, verbose_name="IF")
+    tp = models.CharField(max_length=30, blank=True, verbose_name="TP")
     rc = models.CharField(max_length=30, blank=True, verbose_name="RC")
     default_nature = models.CharField(
         max_length=20,
@@ -272,6 +273,11 @@ class PurchaseInvoice(models.Model):
         max_length=30,
         blank=True,
         verbose_name="IF fournisseur extrait",
+    )
+    supplier_tp_raw = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="TP fournisseur extraite",
     )
     supplier_rc_raw = models.CharField(
         max_length=30,

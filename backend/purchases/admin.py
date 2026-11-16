@@ -23,7 +23,7 @@ class SupplierAdmin(admin.ModelAdmin):
         "active",
     )
     list_filter = ("company", "active", "default_nature", "detected_nature", "activity")
-    search_fields = ("name", "ice", "if_number", "rc", "activity")
+    search_fields = ("name", "ice", "if_number", "tp", "rc", "activity")
 
 
 class PurchaseInvoiceLineInline(admin.TabularInline):
