@@ -189,6 +189,7 @@ OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://ollama:11434").strip().rstr
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:3b").strip()
 OLLAMA_TIMEOUT = env_int("OLLAMA_TIMEOUT", 900)
 OLLAMA_MAX_PAGES = env_int("OLLAMA_MAX_PAGES", 10)
+OLLAMA_NUM_CTX = env_int("OLLAMA_NUM_CTX", 8192)
 PURCHASES_AI_ENABLED = env_bool("PURCHASES_AI_ENABLED", False)
 PURCHASES_EXTRACTION_ENGINE = os.getenv("PURCHASES_EXTRACTION_ENGINE", "rules").strip().lower()
 # Comptes bancaires de la société (RIB/IBAN, séparés par des virgules) :

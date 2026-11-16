@@ -229,6 +229,7 @@ class OllamaInvoiceExtractor:
         model=None,
         timeout=None,
         max_pages=None,
+        num_ctx=None,
         http_open=None,
         excluded_ices=(),
         excluded_names=(),
@@ -237,6 +238,7 @@ class OllamaInvoiceExtractor:
         self.model = model or getattr(settings, "OLLAMA_MODEL", "qwen2.5vl:3b")
         self.timeout = timeout or getattr(settings, "OLLAMA_TIMEOUT", 900)
         self.max_pages = max_pages or getattr(settings, "OLLAMA_MAX_PAGES", 10)
+        self.num_ctx = num_ctx or getattr(settings, "OLLAMA_NUM_CTX", 8192)
         self.excluded_ices = tuple(ice_digits(ice) for ice in excluded_ices if ice)
         self.excluded_names = tuple(excluded_names)
         self.http_open = http_open or urlopen
@@ -269,7 +271,7 @@ class OllamaInvoiceExtractor:
             ],
             "format": INVOICE_SCHEMA,
             "stream": False,
-            "options": {"temperature": 0},
+            "options": {"temperature": 0, "num_ctx": self.num_ctx},
         }
         request = Request(
             f"{self.api_url}/api/chat",

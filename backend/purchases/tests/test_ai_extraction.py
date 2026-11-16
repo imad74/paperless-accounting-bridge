@@ -144,6 +144,7 @@ class OllamaExtractorTests(SimpleTestCase):
         request = http_open.call_args.args[0]
         request_payload = json.loads(request.data)
         self.assertEqual(request_payload["model"], "qwen2.5vl:3b")
+        self.assertEqual(request_payload["options"]["num_ctx"], 8192)
         self.assertEqual(request_payload["format"], INVOICE_SCHEMA)
         self.assertIn("tp", request_payload["format"]["properties"]["supplier"]["required"])
         self.assertEqual(len(request_payload["messages"][1]["images"]), 2)

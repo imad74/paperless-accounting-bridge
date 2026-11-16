@@ -95,8 +95,12 @@ Configuration minimale dans `.env` :
 PURCHASES_AI_ENABLED=True
 OLLAMA_API_URL=http://ollama:11434
 OLLAMA_MODEL=qwen2.5vl:3b
+OLLAMA_NUM_CTX=8192
 PURCHASES_EXTRACTION_ENGINE=rules
 ```
+
+Le contexte de 8 192 jetons est nécessaire pour les rendus haute résolution
+qui préservent les petits caractères des pieds de page.
 
 Conserver `rules` pendant la phase de comparaison. Le passage à `ollama` pour
 les imports automatiques ne doit intervenir qu’après validation d’un échantillon
