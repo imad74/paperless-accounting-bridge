@@ -83,8 +83,14 @@ class PurchaseInvoiceForm(forms.ModelForm):
             "nature": forms.Select(attrs={"class": "form-select"}),
             "invoice_number": forms.TextInput(attrs={"class": "form-control"}),
             "purchase_order_number": forms.TextInput(attrs={"class": "form-control"}),
-            "invoice_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "due_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "invoice_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
+            "due_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
             "currency": forms.TextInput(attrs={"class": "form-control", "maxlength": 3}),
             "supplier_address_raw": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "supplier_contact_raw": forms.TextInput(attrs={"class": "form-control"}),

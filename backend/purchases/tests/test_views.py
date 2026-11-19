@@ -209,6 +209,17 @@ class PurchaseInvoiceViewTests(TestCase):
         self.assertContains(response, "invoice-line-empty-form")
         self.assertContains(response, "lines-__prefix__-description")
 
+    def test_update_page_renders_dates_in_browser_iso_format(self):
+        self.invoice.invoice_date = date(2022, 7, 13)
+        self.invoice.due_date = date(2022, 8, 13)
+        self.invoice.save(update_fields=("invoice_date", "due_date"))
+        self.login(CompanyMembership.Role.OPERATOR)
+
+        response = self.client.get(reverse("purchases:update", args=(self.invoice.pk,)))
+
+        self.assertContains(response, 'value="2022-07-13"')
+        self.assertContains(response, 'value="2022-08-13"')
+
     def test_invoice_with_many_lines_can_be_saved(self):
         """Plus de 1 000 champs envoyés : ne doit pas provoquer d'erreur 400."""
         self.login(CompanyMembership.Role.OPERATOR)
