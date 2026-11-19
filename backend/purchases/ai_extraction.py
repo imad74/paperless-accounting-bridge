@@ -12,7 +12,9 @@ normalement le conteneur local du même Docker Compose.
 
 import base64
 import json
+import re
 import time
+import unicodedata
 from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -89,8 +91,14 @@ INVOICE_SCHEMA = {
         },
         "invoice_number": _TEXT,
         "purchase_order_number": _TEXT,
-        "invoice_date": {"type": ["string", "null"], "description": "Format AAAA-MM-JJ."},
-        "due_date": {"type": ["string", "null"], "description": "Format AAAA-MM-JJ."},
+        "invoice_date": {
+            "type": ["string", "null"],
+            "description": "Date de facture normalisée au format AAAA-MM-JJ, ex. 13 Jul 2022 devient 2022-07-13.",
+        },
+        "due_date": {
+            "type": ["string", "null"],
+            "description": "Date d'échéance normalisée au format AAAA-MM-JJ.",
+        },
         "currency": {"type": "string", "description": "Code ISO : MAD, EUR, USD…"},
         "totals": {
             "type": "object",
@@ -184,6 +192,7 @@ Règles :
 - Le PDF peut contenir la facture puis un bon de livraison, un bon de commande ou d'autres pièces : n'extrais que les lignes de la facture, sans doublons.
 - Recopie chaque désignation telle qu'elle est écrite. Une ligne de remise ou de frais (livraison, transport) est une ligne à part.
 - Les nombres sont au format décimal avec un point (1 234,56 devient 1234.56).
+- Convertis toute date anglaise, française ou numérique au format AAAA-MM-JJ. Par exemple « 13 Jul 2022 12:58pm » devient invoice_date="2022-07-13" ; l'heure ne fait pas partie de la date.
 - Lis d'abord l'en-tête exact des colonnes de prix. « TTC », « P.U TTC », « Prix TTC » ou « Montant TTC » signifie price_basis=TTC ; ne recopie jamais ce montant dans un champ HT.
 - Si la facture n'indique que des prix TTC, renseigne unit_price_ttc et total_ttc, puis calcule unit_price_ht et total_ht avec le taux de TVA indiqué. Pour une TVA de 20 %, HT = TTC / 1,20.
 - Si une ligne indique par exemple « TVA2 (20% / MAD99.83) », tax_rate vaut 20 et tax_amount vaut 99.83. Ne calcule jamais le taux par TVA / TTC : 99.83 / 599 = 16,67 % n'est pas le taux fiscal.
@@ -222,11 +231,95 @@ def _decimal(value, places=CENT):
     return number.quantize(places, rounding=ROUND_HALF_UP) if places else number
 
 
-def _date(value):
+_MONTHS = {
+    "jan": 1,
+    "january": 1,
+    "janv": 1,
+    "janvier": 1,
+    "feb": 2,
+    "february": 2,
+    "fev": 2,
+    "fevr": 2,
+    "fevrier": 2,
+    "mar": 3,
+    "march": 3,
+    "mars": 3,
+    "apr": 4,
+    "april": 4,
+    "avr": 4,
+    "avril": 4,
+    "may": 5,
+    "mai": 5,
+    "jun": 6,
+    "june": 6,
+    "juin": 6,
+    "jul": 7,
+    "july": 7,
+    "juil": 7,
+    "juillet": 7,
+    "aug": 8,
+    "august": 8,
+    "aou": 8,
+    "aout": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "septembre": 9,
+    "oct": 10,
+    "october": 10,
+    "octobre": 10,
+    "nov": 11,
+    "november": 11,
+    "novembre": 11,
+    "dec": 12,
+    "december": 12,
+    "decembre": 12,
+}
+
+
+def _normalized_month(value):
+    normalized = unicodedata.normalize("NFKD", value)
+    normalized = "".join(character for character in normalized if not unicodedata.combining(character))
+    return _MONTHS.get(normalized.casefold().rstrip("."))
+
+
+def _safe_date(year, month, day):
     try:
-        return date.fromisoformat(str(value)[:10]) if value else None
-    except ValueError:
+        return date(int(year), int(month), int(day))
+    except (TypeError, ValueError):
         return None
+
+
+def _date(value):
+    """Accepte les formats ISO, numériques, anglais et français courants."""
+    if isinstance(value, date):
+        return value
+    text = " ".join(str(value or "").replace("\u00a0", " ").split())
+    if not text:
+        return None
+
+    match = re.search(r"(?<!\d)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", text)
+    if match:
+        return _safe_date(*match.groups())
+
+    match = re.search(r"(?<!\d)(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?!\d)", text)
+    if match:
+        day, month, year = match.groups()
+        return _safe_date(year, month, day)
+
+    month_pattern = r"([A-Za-zÀ-ÖØ-öø-ÿ.]+)"
+    match = re.search(rf"(?<!\d)(\d{{1,2}})\s+{month_pattern}\s+(\d{{4}})(?!\d)", text)
+    if match:
+        day, month_name, year = match.groups()
+        month = _normalized_month(month_name)
+        return _safe_date(year, month, day) if month else None
+
+    match = re.search(rf"{month_pattern}\s+(\d{{1,2}}),?\s+(\d{{4}})(?!\d)", text)
+    if match:
+        month_name, day, year = match.groups()
+        month = _normalized_month(month_name)
+        return _safe_date(year, month, day) if month else None
+    return None
 
 
 class OllamaInvoiceExtractor:

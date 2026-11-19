@@ -17,6 +17,7 @@ from purchases.ai_extraction import (
     AiExtractionError,
     INVOICE_SCHEMA,
     OllamaInvoiceExtractor,
+    _date,
 )
 from purchases.models import InvoiceNature, PurchaseInvoice, Supplier
 
@@ -111,6 +112,27 @@ def extractor(http_open, model="qwen2.5vl:3b"):
 
 
 class OllamaExtractorTests(SimpleTestCase):
+    def test_invoice_dates_accept_common_english_french_and_numeric_formats(self):
+        expected = date(2022, 7, 13)
+        values = (
+            "2022-07-13",
+            "2022-07-13T12:58:00",
+            "13/07/2022",
+            "13-07-2022",
+            "13 Jul 2022 12:58pm",
+            "13 July 2022",
+            "13 juil. 2022",
+            "13 juillet 2022",
+            "Jul 13, 2022",
+        )
+        for value in values:
+            with self.subTest(value=value):
+                self.assertEqual(_date(value), expected)
+
+        self.assertEqual(_date("13 août 2022"), date(2022, 8, 13))
+        self.assertIsNone(_date("31/02/2022"))
+        self.assertIsNone(_date(None))
+
     def test_structured_invoice_is_converted_and_checked(self):
         http_open = fake_http(invoice_payload())
 
