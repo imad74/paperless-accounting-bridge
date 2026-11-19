@@ -48,6 +48,8 @@ l'adresse du fournisseur sans les confondre avec les données de l'acheteur.
 Les montants de TVA imprimés sur chaque ligne sont prioritaires pour retrouver
 le vrai taux fiscal et réconcilier les totaux HT, TVA et TTC. Les paiements déjà
 effectués sont également distingués du montant restant à payer.
+Les dates anglaises, françaises et numériques sont normalisées automatiquement
+en ISO, y compris les libellés avec une heure comme `13 Jul 2022 12:58pm`.
 
 Elle utilise Ollama et le modèle visuel local `qwen2.5vl:3b`, sans clé API ni
 abonnement. Elle peut être utilisée facture par facture depuis le bouton
