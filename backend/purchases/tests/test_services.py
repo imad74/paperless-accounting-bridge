@@ -2,12 +2,17 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import Mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from companies.models import Company
 from documents.paperless_api import PaperlessDocument
 from purchases.extraction import ExtractedInvoiceLine, ExtractedPurchaseInvoice
-from purchases.models import PurchaseInvoice, PurchaseInvoiceLine, Supplier
+from purchases.models import (
+    PurchaseInvoice,
+    PurchaseInvoiceAnalysisJob,
+    PurchaseInvoiceLine,
+    Supplier,
+)
 from purchases.services import PurchaseInvoiceImportService, apply_ai_extraction
 
 
@@ -154,3 +159,95 @@ class PurchaseInvoiceImportServiceTests(TestCase):
         self.assertEqual(invoice.supplier_rc_raw, "99887")
         self.assertEqual(invoice.delivery_address_raw, "Entrepôt")
         self.assertEqual(invoice.lines.get().description, "Article IA")
+
+    @override_settings(PURCHASES_AI_ENABLED=True, PURCHASES_AI_AUTO_PROCESS=True)
+    def test_ai_result_is_integrated_automatically(self):
+        company = Company.objects.create(code="AUTO", name="Acheteur automatique")
+        invoice = PurchaseInvoice.objects.create(
+            company=company,
+            paperless_document_id=92,
+        )
+        extracted = ExtractedPurchaseInvoice(
+            supplier_name="FOURNISSEUR AUTOMATIQUE",
+            supplier_ice="001234567890123",
+            invoice_number="AUTO-92",
+            invoice_date=date(2026, 11, 2),
+            due_date=None,
+            currency="MAD",
+            net_ht=Decimal("100"),
+            tax_amount=Decimal("20"),
+            total_ttc=Decimal("120"),
+            lines=(
+                ExtractedInvoiceLine(
+                    description="Article intégré",
+                    quantity=Decimal("1"),
+                    unit_price_ht=Decimal("100"),
+                    total_ht=Decimal("100"),
+                    tax_rate=Decimal("20"),
+                    tax_amount=Decimal("20"),
+                    total_ttc=Decimal("120"),
+                    source_text="(lu par l’IA)",
+                    confidence=Decimal("92"),
+                ),
+            ),
+            confidence=Decimal("92"),
+            notes="Extraction cohérente.",
+            supplier_address="Marrakech",
+            supplier_if="12345678",
+            supplier_tp="87654321",
+            supplier_rc="99887",
+        )
+
+        apply_ai_extraction(invoice, extracted)
+
+        invoice.refresh_from_db()
+        line = invoice.lines.get()
+        self.assertEqual(invoice.status, PurchaseInvoice.Status.VALIDATED)
+        self.assertIsNotNone(invoice.validated_at)
+        self.assertIsNone(invoice.validated_by)
+        self.assertTrue(line.verified)
+        self.assertEqual(invoice.supplier.name, "FOURNISSEUR AUTOMATIQUE")
+        self.assertEqual(invoice.supplier.ice, "001234567890123")
+        self.assertEqual(invoice.supplier.if_number, "12345678")
+        self.assertIn("Intégrée automatiquement", invoice.extraction_notes)
+
+    @override_settings(
+        PURCHASES_AI_ENABLED=True,
+        PURCHASES_AI_AUTO_PROCESS=True,
+        PURCHASES_EXTRACTION_ENGINE="rules",
+    )
+    def test_rule_import_queues_automatic_ai_analysis(self):
+        company = Company.objects.create(code="QUEUE", name="Import automatique")
+        document = PaperlessDocument(
+            id=7900,
+            title="Facture à analyser",
+            original_filename="facture.pdf",
+            created="2026-11-02",
+            page_count=1,
+            web_url="https://archive.example/documents/7900/details",
+            content="Texte OCR",
+        )
+        extractor = Mock()
+        extractor.extract.return_value = ExtractedPurchaseInvoice(
+            supplier_name="FOURNISSEUR FILE",
+            supplier_ice="",
+            invoice_number="Q-7900",
+            invoice_date=date(2026, 11, 2),
+            due_date=None,
+            currency="MAD",
+            net_ht=Decimal("10"),
+            tax_amount=Decimal("2"),
+            total_ttc=Decimal("12"),
+            lines=(),
+            confidence=Decimal("50"),
+            notes="OCR provisoire.",
+        )
+
+        invoice, created = PurchaseInvoiceImportService(
+            client=Mock(), extractor=extractor
+        ).import_document(company=company, paperless_document=document)
+
+        self.assertTrue(created)
+        self.assertEqual(invoice.status, PurchaseInvoice.Status.TO_REVIEW)
+        job = PurchaseInvoiceAnalysisJob.objects.get(invoice=invoice)
+        self.assertEqual(job.status, PurchaseInvoiceAnalysisJob.Status.PENDING)
