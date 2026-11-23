@@ -113,6 +113,7 @@
                             {% else %}—{% endif %}
                         </td>
                         <td>
+                            <a href="{% url 'purchases:report' 'lignes' %}?supplier={{ supplier.pk }}" class="btn btn-sm btn-outline-success">Achats détaillés</a>
                             {% if can_change %}
                                 <a href="{% url 'purchases:supplier_update' supplier.pk %}" class="btn btn-sm btn-outline-primary">Modifier</a>
                             {% endif %}

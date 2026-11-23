@@ -72,9 +72,15 @@ Une extraction visuelle facultative peut lire directement le PDF avec une IA
 et proposer les coordonnées fournisseur/acheteur, ICE, références, lignes,
 remises, frais, taxes, modalités et coordonnées de paiement. Configurez
 le service Ollama local puis utilisez **Analyser le PDF par IA**. Les données
-restent sur le VPS, sont soumises à la validation humaine et le PDF n’est jamais
-modifié. Activez cette fonction avec `PURCHASES_AI_ENABLED=True`. Le traitement
-est confié à un worker séparé : la page web reste disponible pendant l’analyse.
+restent sur le VPS et le PDF n’est jamais modifié. Activez cette fonction avec
+`PURCHASES_AI_ENABLED=True`. Le traitement est confié à un worker séparé : la
+page web reste disponible pendant l’analyse.
+
+Le mode `PURCHASES_AI_AUTO_PROCESS=True` place automatiquement chaque nouvelle
+facture dans la file IA, crée ou complète son fournisseur, puis intègre ses
+champs et ses lignes sans validation manuelle. Les avertissements d’extraction
+restent enregistrés dans les notes. L’état **Achats détaillés** permet ensuite
+de filtrer un fournisseur et d’exporter tous ses achats sur une feuille Excel.
 
 Docker Compose charge automatiquement `docker-compose.override.yml` en
 développement afin de monter le code et d’utiliser `runserver`. Le déploiement

@@ -100,10 +100,20 @@ class PurchaseInvoiceImportView(CompanyPermissionRequiredMixin, FormView):
             return self.form_invalid(form)
 
         if created:
-            messages.success(
-                self.request,
-                "Facture importée. Vérifiez les champs et chaque ligne avant validation.",
-            )
+            if (
+                settings.PURCHASES_AI_ENABLED
+                and settings.PURCHASES_AI_AUTO_PROCESS
+            ):
+                messages.success(
+                    self.request,
+                    "Facture importée. L’analyse IA et l’intégration des données "
+                    "se poursuivent automatiquement en arrière-plan.",
+                )
+            else:
+                messages.success(
+                    self.request,
+                    "Facture importée. Vérifiez les champs et chaque ligne avant validation.",
+                )
             if invoice.nature != InvoiceNature.GOODS:
                 messages.warning(
                     self.request,
@@ -149,6 +159,9 @@ class PurchaseInvoiceUpdateView(
         )
         context["paperless_url"] = settings.PAPERLESS_API_URL.rstrip("/")
         context["ai_extraction_available"] = settings.PURCHASES_AI_ENABLED
+        context["automatic_purchase_processing"] = bool(
+            settings.PURCHASES_AI_ENABLED and settings.PURCHASES_AI_AUTO_PROCESS
+        )
         context["ai_job"] = getattr(self.object, "ai_analysis_job", None)
         return context
 
@@ -159,12 +172,23 @@ class PurchaseInvoiceUpdateView(
             return self.form_invalid(form)
         with transaction.atomic():
             self.object = form.save(commit=False)
-            self.object.status = PurchaseInvoice.Status.TO_REVIEW
+            automatic = bool(
+                settings.PURCHASES_AI_ENABLED
+                and settings.PURCHASES_AI_AUTO_PROCESS
+                and self.object.extraction_method == PurchaseInvoice.ExtractionMethod.AI_PDF
+            )
+            self.object.status = (
+                PurchaseInvoice.Status.VALIDATED
+                if automatic
+                else PurchaseInvoice.Status.TO_REVIEW
+            )
             self.object.validated_by = None
-            self.object.validated_at = None
+            self.object.validated_at = timezone.now() if automatic else None
             self.object.save()
             formset.instance = self.object
             formset.save()
+            if automatic:
+                self.object.lines.update(verified=True)
             rebuild_tax_summaries(self.object)
         messages.success(self.request, "La facture et ses lignes ont été enregistrées.")
         return redirect(self.get_success_url())

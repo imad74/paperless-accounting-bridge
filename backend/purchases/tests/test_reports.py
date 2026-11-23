@@ -101,6 +101,27 @@ class PurchaseReportTests(TestCase):
         self.assertEqual(rows[0]["invoice__invoice_number"], "F-2")
         self.assertEqual(result.totals["total_ht"], Decimal("160.00"))
 
+    def test_line_detail_uses_raw_supplier_identity_when_not_linked(self):
+        invoice = PurchaseInvoice.objects.create(
+            company=self.company,
+            supplier_name_raw="Fournisseur extrait",
+            supplier_ice_raw="001111111111111",
+            invoice_number="RAW-1",
+            invoice_date=date(2026, 3, 1),
+            net_ht=Decimal("25"),
+            tax_amount=Decimal("5"),
+            total_ttc=Decimal("30"),
+        )
+        add_line(invoice, 1, "Article brut", "1", "25")
+
+        row = next(
+            row for row in self.report("lignes").rows
+            if row["invoice__invoice_number"] == "RAW-1"
+        )
+
+        self.assertEqual(row["supplier_label"], "Fournisseur extrait")
+        self.assertEqual(row["supplier_ice"], "001111111111111")
+
     def test_supplier_synthesis_uses_invoice_totals_without_double_counting(self):
         result = self.report("fournisseurs")
         by_supplier = {row["supplier_label"]: row for row in result.rows}
@@ -146,6 +167,8 @@ class PurchaseReportTests(TestCase):
                 self.assertNotContains(response, "SECRET")
         response = self.client.get(reverse("purchases:report", args=("articles",)))
         self.assertContains(response, "MDF BRUT 18 mm")
+        lines = self.client.get(reverse("purchases:report", args=("lignes",)))
+        self.assertContains(lines, "Achats détaillés par fournisseur")
 
     def test_unknown_report_returns_404(self):
         self.login()

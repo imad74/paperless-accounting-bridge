@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
 
 from documents.models import Document
 from documents.paperless_api import PaperlessApiClient
@@ -108,6 +109,51 @@ def find_matching_supplier(*, company, name, ice):
             normalized_name=Supplier.normalize_name(name)
         ).first()
     return None
+
+
+def automatic_ai_processing_enabled():
+    return bool(
+        getattr(settings, "PURCHASES_AI_ENABLED", False)
+        and getattr(settings, "PURCHASES_AI_AUTO_PROCESS", False)
+    )
+
+
+def supplier_from_extraction(*, company, extracted, create=False):
+    """Retrouve puis complète le fournisseur, ou le crée en mode automatique."""
+    supplier = find_matching_supplier(
+        company=company,
+        name=extracted.supplier_name,
+        ice=extracted.supplier_ice,
+    )
+    if supplier is None and create and extracted.supplier_name:
+        supplier = Supplier.objects.create(
+            company=company,
+            name=extracted.supplier_name,
+            ice=extracted.supplier_ice,
+            if_number=extracted.supplier_if,
+            tp=extracted.supplier_tp,
+            rc=extracted.supplier_rc,
+            address=extracted.supplier_address,
+        )
+        return supplier
+    if supplier is None:
+        return None
+
+    changed = []
+    extracted_values = {
+        "ice": extracted.supplier_ice,
+        "if_number": extracted.supplier_if,
+        "tp": extracted.supplier_tp,
+        "rc": extracted.supplier_rc,
+        "address": extracted.supplier_address,
+    }
+    for field, value in extracted_values.items():
+        if value and not getattr(supplier, field):
+            setattr(supplier, field, value)
+            changed.append(field)
+    if changed:
+        supplier.save(update_fields=(*changed, "updated_at"))
+    return supplier
 
 
 @transaction.atomic
@@ -245,6 +291,19 @@ class PurchaseInvoiceImportService:
         if allowed_natures is not None and nature not in allowed_natures:
             return None, False
 
+        inline_ai = bool(
+            self.extractor is None
+            and getattr(settings, "PURCHASES_AI_ENABLED", False)
+            and getattr(settings, "PURCHASES_EXTRACTION_ENGINE", "rules") == "ollama"
+        )
+        automatic_integration = automatic_ai_processing_enabled() and inline_ai
+        if automatic_integration:
+            supplier = supplier_from_extraction(
+                company=company,
+                extracted=extracted,
+                create=True,
+            )
+
         pab_document = Document.objects.filter(
             company=company,
             paperless_id=paperless_document.id,
@@ -291,11 +350,24 @@ class PurchaseInvoiceImportService:
             supplier_iban=extracted.supplier_iban,
             supplier_swift=extracted.supplier_swift,
             nature=nature,
-            status=PurchaseInvoice.Status.TO_REVIEW,
-            extraction_method=PurchaseInvoice.ExtractionMethod.PAPERLESS_OCR,
+            status=(
+                PurchaseInvoice.Status.VALIDATED
+                if automatic_integration
+                else PurchaseInvoice.Status.TO_REVIEW
+            ),
+            extraction_method=(
+                PurchaseInvoice.ExtractionMethod.AI_PDF
+                if inline_ai
+                else PurchaseInvoice.ExtractionMethod.PAPERLESS_OCR
+            ),
             extraction_confidence=extracted.confidence,
             raw_ocr_text=paperless_document.content,
-            extraction_notes=notes,
+            extraction_notes=(
+                f"{notes} Intégrée automatiquement après analyse IA.".strip()
+                if automatic_integration
+                else notes
+            ),
+            validated_at=timezone.now() if automatic_integration else None,
         )
         PurchaseInvoiceLine.objects.bulk_create(
             PurchaseInvoiceLine(
@@ -313,12 +385,15 @@ class PurchaseInvoiceImportService:
                 total_ttc=line.total_ttc,
                 source_text=line.source_text,
                 extraction_confidence=line.confidence,
+                verified=automatic_integration,
             )
             for position, line in enumerate(
                 (line for line in extracted.lines if line_fits_database(line)), start=1
             )
         )
         rebuild_tax_summaries(invoice)
+        if automatic_ai_processing_enabled() and not inline_ai:
+            queue_ai_analysis(invoice)
         return invoice, True
 
 
@@ -367,19 +442,28 @@ def _invoice_values_from_extraction(extracted):
 
 @transaction.atomic
 def apply_ai_extraction(invoice, extracted):
-    """Remplace les champs OCR et les lignes par un résultat IA à contrôler."""
-    supplier = find_matching_supplier(
+    """Remplace les champs OCR et les lignes par le résultat de l'analyse IA."""
+    automatic_integration = automatic_ai_processing_enabled()
+    supplier = supplier_from_extraction(
         company=invoice.company,
-        name=extracted.supplier_name,
-        ice=extracted.supplier_ice,
+        extracted=extracted,
+        create=automatic_integration,
     )
     for field, value in _invoice_values_from_extraction(extracted).items():
         setattr(invoice, field, value)
     invoice.supplier = supplier
     invoice.extraction_method = PurchaseInvoice.ExtractionMethod.AI_PDF
-    invoice.status = PurchaseInvoice.Status.TO_REVIEW
+    invoice.status = (
+        PurchaseInvoice.Status.VALIDATED
+        if automatic_integration
+        else PurchaseInvoice.Status.TO_REVIEW
+    )
     invoice.validated_by = None
-    invoice.validated_at = None
+    invoice.validated_at = timezone.now() if automatic_integration else None
+    if automatic_integration:
+        invoice.extraction_notes = (
+            f"{invoice.extraction_notes} Intégrée automatiquement après analyse IA."
+        ).strip()
     invoice.save()
     invoice.lines.all().delete()
     PurchaseInvoiceLine.objects.bulk_create(
@@ -398,6 +482,7 @@ def apply_ai_extraction(invoice, extracted):
             total_ttc=line.total_ttc,
             source_text=line.source_text,
             extraction_confidence=line.confidence,
+            verified=automatic_integration,
         )
         for position, line in enumerate(
             (line for line in extracted.lines if line_fits_database(line)), start=1
@@ -408,7 +493,7 @@ def apply_ai_extraction(invoice, extracted):
 
 
 def reanalyze_invoice_with_ai(invoice, *, client=None, extractor=None):
-    """Relit le PDF Paperless par IA puis remet la facture en validation humaine."""
+    """Relit le PDF Paperless par IA puis applique le mode d'intégration configuré."""
     if not invoice.paperless_document_id:
         from .ai_extraction import AiExtractionError
 

@@ -8,7 +8,13 @@
     <td>{{ line_form.total_ht }}</td>
     <td>{{ line_form.tax_amount }}</td>
     <td>{{ line_form.total_ttc }}</td>
-    <td class="text-center">{{ line_form.verified }}</td>
+    <td class="text-center">
+        {% if automatic %}
+            <span class="badge bg-green-lt">Automatique</span>
+        {% else %}
+            {{ line_form.verified }}
+        {% endif %}
+    </td>
     <td>
         <span class="d-none">{{ line_form.DELETE }}</span>
         <button type="button" class="btn btn-sm btn-outline-danger" data-remove-invoice-line>

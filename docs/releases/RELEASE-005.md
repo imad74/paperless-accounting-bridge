@@ -61,8 +61,17 @@ interrompue est remise en attente au redémarrage du worker.
 
 Le PDF reste dans le réseau Docker du VPS : ses pages sont converties en images
 par PAB puis envoyées au conteneur Ollama local.
-Après l’analyse, la facture repasse toujours à l’état **À vérifier** et les
-lignes ne sont jamais marquées comme vérifiées automatiquement.
+
+Avec `PURCHASES_AI_AUTO_PROCESS=True`, chaque facture importée est placée dans
+la file IA. Le résultat est intégré automatiquement : fournisseur créé ou
+complété, lignes marquées comme intégrées et facture passée à l’état validé.
+Les notes et anomalies de l’IA restent conservées pour la traçabilité. Sans ce
+paramètre, le contrôle et la validation humaine historiques restent actifs.
+
+L’état **Achats détaillés par fournisseur** rassemble chaque ligne d’article,
+avec la facture, la date, les quantités et les montants. Le filtre fournisseur
+et l’export Excel produisent une feuille complète exploitable comme base de
+gestion.
 
 La validation est refusée si le fournisseur, le numéro ou la date manquent,
 si une ligne n’est pas vérifiée, ou si les sommes des lignes ne correspondent
@@ -98,6 +107,7 @@ Configuration minimale dans `.env` :
 
 ```dotenv
 PURCHASES_AI_ENABLED=True
+PURCHASES_AI_AUTO_PROCESS=True
 OLLAMA_API_URL=http://ollama:11434
 OLLAMA_MODEL=qwen2.5vl:3b
 OLLAMA_NUM_CTX=8192

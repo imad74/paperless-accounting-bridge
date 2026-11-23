@@ -38,7 +38,7 @@ UNIDENTIFIED = "(fournisseur non identifié)"
 REPORTS = {
     "catalogue": "Articles et fournisseurs",
     "comparaison": "Comparaison des prix fournisseurs",
-    "lignes": "Détail des lignes d’achat",
+    "lignes": "Achats détaillés par fournisseur",
     "articles": "Synthèse par article",
     "fournisseurs": "Synthèse par fournisseur",
     "mois": "Synthèse par mois",
@@ -56,12 +56,18 @@ class PurchaseReportFilterForm(forms.Form):
     date_from = forms.DateField(
         required=False,
         label="Du",
-        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"class": "form-control", "type": "date"},
+        ),
     )
     date_to = forms.DateField(
         required=False,
         label="Au",
-        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        widget=forms.DateInput(
+            format="%Y-%m-%d",
+            attrs={"class": "form-control", "type": "date"},
+        ),
     )
     supplier = forms.ModelChoiceField(
         queryset=Supplier.objects.none(),
@@ -233,13 +239,23 @@ def lines_report(company, filters):
                 F("invoice__supplier__name"),
                 NullIf(F("invoice__supplier_name_raw"), Value("")),
                 Value(UNIDENTIFIED),
-            )
+            ),
+            supplier_ice=Coalesce(
+                F("invoice__supplier__ice"),
+                NullIf(F("invoice__supplier_ice_raw"), Value("")),
+                Value(""),
+            ),
         )
-        .order_by("invoice__invoice_date", "invoice__invoice_number", "position")
+        .order_by(
+            "supplier_label",
+            "invoice__invoice_date",
+            "invoice__invoice_number",
+            "position",
+        )
         .values(
             "invoice__invoice_date",
             "supplier_label",
-            "invoice__supplier__ice",
+            "supplier_ice",
             "invoice__invoice_number",
             "invoice__paperless_title",
             "reference",
@@ -259,7 +275,7 @@ def lines_report(company, filters):
     columns = [
         Column("invoice__invoice_date", "Date", "date"),
         Column("supplier_label", "Fournisseur"),
-        Column("invoice__supplier__ice", "ICE"),
+        Column("supplier_ice", "ICE"),
         Column("invoice__invoice_number", "N° facture"),
         Column("invoice__paperless_title", "Pièce"),
         Column("reference", "Référence"),

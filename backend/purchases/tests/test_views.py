@@ -209,6 +209,20 @@ class PurchaseInvoiceViewTests(TestCase):
         self.assertContains(response, "invoice-line-empty-form")
         self.assertContains(response, "lines-__prefix__-description")
 
+    @override_settings(
+        PURCHASES_AI_ENABLED=True,
+        PURCHASES_AI_AUTO_PROCESS=True,
+    )
+    def test_automatic_mode_hides_manual_validation_controls(self):
+        self.login(CompanyMembership.Role.MANAGER)
+
+        response = self.client.get(
+            reverse("purchases:update", args=(self.invoice.pk,))
+        )
+
+        self.assertContains(response, "Automatique")
+        self.assertNotContains(response, "Valider la facture")
+
     def test_update_page_renders_dates_in_browser_iso_format(self):
         self.invoice.invoice_date = date(2022, 7, 13)
         self.invoice.due_date = date(2022, 8, 13)
