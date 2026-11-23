@@ -107,6 +107,10 @@ PURCHASES_EXTRACTION_ENGINE=rules
 Le contexte de 8 192 jetons est nécessaire pour les rendus haute résolution
 qui préservent les petits caractères des pieds de page.
 
+Les dates extraites sont rendues au format ISO dans les champs HTML de type
+date. Elles restent ainsi visibles avec une interface française et ne sont pas
+effacées accidentellement lors de l'enregistrement du formulaire.
+
 Conserver `rules` pendant la phase de comparaison. Le passage à `ollama` pour
 les imports automatiques ne doit intervenir qu’après validation d’un échantillon
 représentatif de factures.
